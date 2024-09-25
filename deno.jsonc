@@ -1,0 +1,12 @@
+{
+  "name": "@takker/cosense-srs",
+  "version": "0.0.0",
+  "exports": " ./mod.ts",
+  "imports": {
+    "@core/iterutil": "jsr:@core/iterutil@^0.8.0",
+    "@cosense/std": "jsr:@cosense/std@^0.29.0",
+    "@cosense/types": "jsr:@cosense/types@^0.10.1",
+    "@std/async": "jsr:@std/async@^1.0.5",
+    "option-t": "npm:option-t@^49.2.0"
+  }
+}
