@@ -1,4 +1,4 @@
-import { type BaseOptions, listPages, ListPagesOption } from "@cosense/std/rest";
+import { listPages, type ListPagesOption } from "@cosense/std/rest";
 import type { BasePage } from "@cosense/types/rest";
 import { isErr, unwrapOk } from "option-t/plain_result";
 
