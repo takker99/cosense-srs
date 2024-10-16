@@ -4,91 +4,106 @@ import { type FetchError, getTable, type TableError } from "@cosense/std/rest";
 import { patch } from "@cosense/std/browser/websocket";
 import { CsvParseStream } from "@std/csv";
 import { createOk, isErr, type Result } from "option-t/plain_result";
-import { pipe } from "@core/pipe/async";
-import { map } from "@core/iterutil/pipe/async/map";
 import { type Node, parse } from "@progfay/scrapbox-parser";
+
+export interface RevLog extends Omit<ReviewLogInput, "review"> {
+  noteId: string;
+  ord: number;
+  review: number;
+}
 
 export interface ReviewLogStorageLocation extends Path {
   username: string;
 }
 
-export type CardId = `${string}-${number}`;
-
 export const readReviewLog = async (
   init: ReviewLogStorageLocation,
 ): Promise<
   Result<
-    AsyncIterable<[CardId, ReviewLogInput]>,
+    ReadableStream<RevLog>,
     TableError | FetchError
   >
 > => {
   const res = await fetch(
-    getTable.toRequest(init.project, init.title, init.username),
+    getTable.toRequest(init.project, init.title, toTableName(init.username)),
   );
-  const stream = res.clone().body?.pipeThrough?.(new TextDecoderStream());
+  const stream = res.clone().body;
   const result = await getTable.fromResponse(res);
   if (isErr(result)) return result;
-  return createOk(await extractReviewLogsFromCSV(stream!));
+  if (!stream) throw new Error("This HTTP response has no body.");
+  return createOk(
+    stream.pipeThrough(new TextDecoderStream()).pipeThrough(revLogStream()),
+  );
 };
 
-export const extractReviewLogsFromCSV = (
-  csv: ReadableStream<string>,
-): Promise<AsyncIterable<[CardId, ReviewLogInput]>> => {
-  const stream = csv.pipeThrough(
-    new CsvParseStream({
-      columns: [
-        "id",
-        "ord",
-        "rating",
-        "state",
-        "due",
-        "stability",
-        "difficulty",
-        "elapsed_days",
-        "last_elapsed_days",
-        "scheduled_days",
-        "review",
-      ] as const satisfies ("id" | "ord" | keyof ReviewLogInput)[],
-      skipFirstRow: true,
-    }),
-  );
-  return pipe(
-    stream[Symbol.asyncIterator](),
-    map((
-      {
-        id,
-        ord,
-        rating,
-        state,
-        due,
-        stability,
-        difficulty,
-        elapsed_days,
-        last_elapsed_days,
-        scheduled_days,
-        review,
-        ...log
-      },
-    ): [`${string}-${number}`, ReviewLogInput] => [
-      toCardId(id, ord as `${number}`),
-      {
-        ...log,
-        stability: Number(stability),
-        difficulty: Number(difficulty),
-        elapsed_days: Number(elapsed_days),
-        last_elapsed_days: Number(last_elapsed_days),
-        scheduled_days: Number(scheduled_days),
-        rating: Number(rating),
-        state: Number(state),
-        due: Number(due),
-        review: Number(review),
-      },
-    ]),
-  );
+/** Transform a stream `string` into a stream {@linkcode RevLog}. */
+export const revLogStream = (
+  writableStrategy?: QueuingStrategy<string>,
+  readableStrategy?: QueuingStrategy<RevLog>,
+): TransformStream<string, RevLog> => {
+  const { readable, writable } = new CsvParseStream({
+    columns: [
+      "noteId",
+      "ord",
+      "rating",
+      "state",
+      "due",
+      "stability",
+      "difficulty",
+      "elapsed_days",
+      "last_elapsed_days",
+      "scheduled_days",
+      "review",
+    ] as const satisfies (keyof RevLog)[],
+    skipFirstRow: true,
+    writableStrategy,
+  });
+
+  return {
+    writable,
+    readable: readable.pipeThrough(
+      new TransformStream(
+        {
+          transform(
+            {
+              ord,
+              rating,
+              state,
+              due,
+              stability,
+              difficulty,
+              elapsed_days,
+              last_elapsed_days,
+              scheduled_days,
+              review,
+              ...log
+            },
+            controller,
+          ) {
+            controller.enqueue({
+              ...log,
+              ord: Number(ord),
+              stability: Number(stability),
+              difficulty: Number(difficulty),
+              elapsed_days: Number(elapsed_days),
+              last_elapsed_days: Number(last_elapsed_days),
+              scheduled_days: Number(scheduled_days),
+              rating: Number(rating),
+              state: Number(state),
+              due: Number(due),
+              review: Number(review),
+            });
+          },
+        },
+        undefined,
+        readableStrategy,
+      ),
+    ),
+  };
 };
 
 export const writeReviewLog = (
-  ReviewLogs: ReadonlyMap<CardId, ReviewLogInput>,
+  revLogs: ReadonlyArray<RevLog>,
   init: ReviewLogStorageLocation,
 ): ReturnType<typeof patch> =>
   patch(
@@ -97,7 +112,7 @@ export const writeReviewLog = (
     (lines) => [
       ...update(
         lines.map((line) => line.text).join("\n"),
-        new Map(ReviewLogs),
+        [...revLogs],
         init.username,
       ),
     ],
@@ -105,14 +120,17 @@ export const writeReviewLog = (
 
 export function* update(
   text: string,
-  ReviewLogs: Map<`${string}-${number}`, ReviewLogInput>,
+  revLogs: RevLog[],
   username: string,
 ): Generator<string, void, unknown> {
   const blocks = parse(text, { hasTitle: true });
   let hasHeader = false;
-  const lastTableBlock = blocks.findLast((block) =>
-    block.type === "table" && block.fileName === username
+  const tableName = toTableName(username);
+
+  const hasUserDataTableBlock = blocks.some((block) =>
+    block.type === "table" && block.fileName === tableName
   );
+
   for (const block of blocks) {
     switch (block.type) {
       case "title":
@@ -121,35 +139,21 @@ export function* update(
       case "table": {
         const indent = " ".repeat(block.indent);
         yield `${indent}table:${block.fileName}`;
-        if (block.fileName !== username) {
-          yield* block.cells.map((rows) =>
-            ` ${indent}${rows.map(raw).join("\t")}`
-          );
-          break;
-        }
-        const firstRow = block.cells.at(0)?.map?.(raw)?.join?.("\t");
-        if (!hasHeader && firstRow !== header) {
-          yield ` ${indent}${header}`;
-          hasHeader = true;
-        } else if (firstRow) {
-          yield ` ${indent}${firstRow}`;
-        }
-        for (const rows of block.cells.slice(1)) {
-          const id = toCardId(raw(rows[0]), raw(rows[1]) as `${number}`);
-          const log = ReviewLogs.get(id);
-          if (!log) {
-            yield ` ${indent}${rows.map(raw).join("\t")}`;
-            continue;
+        if (block.fileName === tableName) {
+          const firstRow = block.cells.at(0)?.map?.(raw)?.join?.("\t");
+          if (!hasHeader && firstRow !== header) {
+            yield ` ${indent}${header}`;
+            hasHeader = true;
           }
-          yield ` ${indent}${stringify(id, log)}`;
-          ReviewLogs.delete(id);
+          if (firstRow) yield ` ${indent}${firstRow}`;
         }
-        if (block === lastTableBlock) {
-          for (const [id, log] of ReviewLogs) {
-            yield ` ${indent}${stringify(id, log)}`;
-          }
-          ReviewLogs.clear();
-        }
+        yield* revLogs.sort((a, b) => b.review - a.review).map((log) =>
+          ` ${indent}${stringify(log)}`
+        );
+        revLogs.splice(0);
+        yield* block.cells.slice(1).map((rows) =>
+          ` ${indent}${rows.map(raw).join("\t")}`
+        );
         break;
       }
       case "codeBlock": {
@@ -164,31 +168,21 @@ export function* update(
     }
   }
 
-  if (lastTableBlock) return;
-  yield `table:${username}`;
+  if (hasUserDataTableBlock && revLogs.length === 0) return;
+  yield `table:${tableName}`;
   yield ` ${header}`;
-  for (const [id, log] of ReviewLogs) {
-    yield ` ${stringify(id, log)}`;
-  }
-  ReviewLogs.clear();
+  yield* revLogs.sort((a, b) => b.review - a.review).map((log) =>
+    ` ${stringify(log)}`
+  );
 }
 
 const raw = (nodes: Node[]) => nodes.map((node) => node.raw).join("");
 
 const header =
-  "id\tord\trating\tstate\tdue\tstability\tdifficulty\telapsed_days\tlast_elapsed_days\tscheduled_days\treview";
+  "noteId\tord\trating\tstate\tdue\tstability\tdifficulty\telapsed_days\tlast_elapsed_days\tscheduled_days\treview";
 
-const stringify = (id: CardId, log: ReviewLogInput) => {
-  const [noteId, ord] = extractCardId(id);
-  return `${noteId}\t${ord}\t${log.rating}\t${log.state}\t${log.due}\t${log.stability}\t${log.difficulty}\t${log.elapsed_days}\t${log.last_elapsed_days}\t${log.scheduled_days}\t${log.review}`;
+const stringify = (revLog: RevLog) => {
+  return `${revLog.noteId}\t${revLog.ord}\t${revLog.rating}\t${revLog.state}\t${revLog.due}\t${revLog.stability}\t${revLog.difficulty}\t${revLog.elapsed_days}\t${revLog.last_elapsed_days}\t${revLog.scheduled_days}\t${revLog.review}`;
 };
 
-const toCardId = (
-  noteId: string,
-  ord: `${number}` | number,
-): CardId => `${noteId}-${ord}`;
-const extractCardId = (id: CardId): [string, number] => {
-  const noteId = id.slice(0, id.lastIndexOf("-"));
-  const ord = parseInt(id.split("-").pop() ?? "0");
-  return [noteId, ord];
-};
+const toTableName = (username: string) => `${username}-revlog`;

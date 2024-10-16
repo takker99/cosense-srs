@@ -18,8 +18,6 @@
     "coverage/"
   ],
   "imports": {
-    "@core/iterutil": "jsr:@core/iterutil@^0.9.0",
-    "@core/pipe": "jsr:@core/pipe@^0.3.1",
     "@core/unknownutil": "jsr:@core/unknownutil@^4.3.0",
     "@cosense/std": "jsr:@cosense/std@^0.29.0",
     "@cosense/types": "jsr:@cosense/types@^0.10.1",
