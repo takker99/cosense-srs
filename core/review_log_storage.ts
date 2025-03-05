@@ -1,15 +1,15 @@
-import type { ReviewLogInput } from "ts-fsrs";
+import type { ReviewLog } from "ts-fsrs";
 import type { Path } from "./path.ts";
 import { type FetchError, getTable, type TableError } from "@cosense/std/rest";
 import { patch } from "@cosense/std/browser/websocket";
 import { CsvParseStream } from "@std/csv";
-import { createOk, isErr, type Result } from "option-t/plain_result";
+import { createOk, isErr, type Result, unwrapErr } from "option-t/plain_result";
 import { type Node, parse } from "@progfay/scrapbox-parser";
+import { emptyStream } from "./empty_stream.ts";
 
-export interface RevLog extends Omit<ReviewLogInput, "review"> {
+export interface RevLog extends ReviewLog {
   noteId: string;
   ord: number;
-  review: number;
 }
 
 export interface ReviewLogStorageLocation extends Path {
@@ -29,7 +29,13 @@ export const readReviewLog = async (
   );
   const stream = res.clone().body;
   const result = await getTable.fromResponse(res);
-  if (isErr(result)) return result;
+  if (isErr(result)) {
+    // When the table is not created yet.
+    if (unwrapErr(result).name === "NotFoundError") {
+      return createOk(emptyStream());
+    }
+    return result;
+  }
   if (!stream) throw new Error("This HTTP response has no body.");
   return createOk(
     stream.pipeThrough(new TextDecoderStream()).pipeThrough(revLogStream()),
@@ -66,6 +72,7 @@ export const revLogStream = (
         {
           transform(
             {
+              noteId,
               ord,
               rating,
               state,
@@ -76,12 +83,11 @@ export const revLogStream = (
               last_elapsed_days,
               scheduled_days,
               review,
-              ...log
             },
             controller,
           ) {
             controller.enqueue({
-              ...log,
+              noteId,
               ord: Number(ord),
               stability: Number(stability),
               difficulty: Number(difficulty),
@@ -90,8 +96,8 @@ export const revLogStream = (
               scheduled_days: Number(scheduled_days),
               rating: Number(rating),
               state: Number(state),
-              due: Number(due),
-              review: Number(review),
+              due: new Date(Number(due)),
+              review: new Date(Number(review)),
             });
           },
         },
@@ -103,20 +109,22 @@ export const revLogStream = (
 };
 
 export const writeReviewLog = (
-  revLogs: ReadonlyArray<RevLog>,
+  revLogs: Iterable<RevLog>,
   init: ReviewLogStorageLocation,
-): ReturnType<typeof patch> =>
-  patch(
+): ReturnType<typeof patch> => {
+  const logs = [...revLogs];
+  return patch(
     init.project,
     init.title,
     (lines) => [
       ...update(
         lines.map((line) => line.text).join("\n"),
-        [...revLogs],
+        logs,
         init.username,
       ),
     ],
   );
+};
 
 export function* update(
   text: string,
@@ -140,18 +148,16 @@ export function* update(
         const indent = " ".repeat(block.indent);
         yield `${indent}table:${block.fileName}`;
         if (block.fileName === tableName) {
-          const firstRow = block.cells.at(0)?.map?.(raw)?.join?.("\t");
-          if (!hasHeader && firstRow !== header) {
+          if (!hasHeader) {
             yield ` ${indent}${header}`;
             hasHeader = true;
           }
-          if (firstRow) yield ` ${indent}${firstRow}`;
+          const firstRow = block.cells.at(0)?.map?.(raw)?.join?.("\t");
+          if (firstRow === header) block.cells.splice(0, 1);
+          yield* revLogs.map((log) => ` ${indent}${stringify(log)}`);
+          revLogs.splice(0);
         }
-        yield* revLogs.sort((a, b) => b.review - a.review).map((log) =>
-          ` ${indent}${stringify(log)}`
-        );
-        revLogs.splice(0);
-        yield* block.cells.slice(1).map((rows) =>
+        yield* block.cells.map((rows) =>
           ` ${indent}${rows.map(raw).join("\t")}`
         );
         break;
@@ -171,9 +177,7 @@ export function* update(
   if (hasUserDataTableBlock && revLogs.length === 0) return;
   yield `table:${tableName}`;
   yield ` ${header}`;
-  yield* revLogs.sort((a, b) => b.review - a.review).map((log) =>
-    ` ${stringify(log)}`
-  );
+  yield* revLogs.map((log) => ` ${stringify(log)}`);
 }
 
 const raw = (nodes: Node[]) => nodes.map((node) => node.raw).join("");
@@ -182,7 +186,7 @@ const header =
   "noteId\tord\trating\tstate\tdue\tstability\tdifficulty\telapsed_days\tlast_elapsed_days\tscheduled_days\treview";
 
 const stringify = (revLog: RevLog) => {
-  return `${revLog.noteId}\t${revLog.ord}\t${revLog.rating}\t${revLog.state}\t${revLog.due}\t${revLog.stability}\t${revLog.difficulty}\t${revLog.elapsed_days}\t${revLog.last_elapsed_days}\t${revLog.scheduled_days}\t${revLog.review}`;
+  return `${revLog.noteId}\t${revLog.ord}\t${revLog.rating}\t${revLog.state}\t${revLog.due.getTime()}\t${revLog.stability}\t${revLog.difficulty}\t${revLog.elapsed_days}\t${revLog.last_elapsed_days}\t${revLog.scheduled_days}\t${revLog.review.getTime()}`;
 };
 
 const toTableName = (username: string) => `${username}-revlog`;

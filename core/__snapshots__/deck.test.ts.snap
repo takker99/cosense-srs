@@ -1,0 +1,25 @@
+export const snapshot = {};
+
+snapshot[`parseDeck() > not found 1`] = `
+{
+  err: {
+    message: "No deck settings found in the page.",
+    name: "DeckNotFoundError",
+  },
+  ok: false,
+  val: null,
+}
+`;
+
+snapshot[`parseDeck() > found 1`] = `
+{
+  err: null,
+  ok: true,
+  val: {
+    description: "システム英単語系の問題集",
+    id: 44845749858349580,
+    name: "system-english",
+    updated: 1693541873,
+  },
+}
+`;

@@ -25,13 +25,13 @@ Deno.test("update should yield table blocks with updated review logs", () => {
     ord: 1,
     rating: 4,
     state: 3,
-    due: 1627849200000,
+    due: new Date(1627849200000),
     stability: 0.6,
     difficulty: 0.4,
     elapsed_days: 11,
     last_elapsed_days: 6,
     scheduled_days: 16,
-    review: 1627849200000,
+    review: new Date(1627849200000),
   }] satisfies RevLog[];
   const username = "testUser";
 
@@ -76,13 +76,13 @@ Deno.test("update should add new review logs if not present in the table", () =>
     ord: 2,
     rating: 4,
     state: 3,
-    due: 1627849200000,
+    due: new Date(1627849200000),
     stability: 0.7,
     difficulty: 0.5,
     elapsed_days: 12,
     last_elapsed_days: 7,
     scheduled_days: 17,
-    review: 1627849200000,
+    review: new Date(1627849200000),
   }] satisfies RevLog[];
   const username = "testUser";
 
@@ -110,13 +110,13 @@ Deno.test("update should handle multiple blocks correctly", () => {
     ord: 1,
     rating: 4,
     state: 3,
-    due: 1627849200000,
+    due: new Date(1627849200000),
     stability: 0.6,
     difficulty: 0.4,
     elapsed_days: 11,
     last_elapsed_days: 6,
     scheduled_days: 16,
-    review: 1627849200000,
+    review: new Date(1627849200000),
   }] satisfies RevLog[];
   const username = "testUser";
 
@@ -172,26 +172,26 @@ Deno.test("extractReviewLogsFromCSV should parse CSV correctly", async () => {
       ord: 1,
       rating: 3,
       state: 2,
-      due: 1627849200000,
+      due: new Date(1627849200000),
       stability: 0.5,
       difficulty: 0.3,
       elapsed_days: 10,
       last_elapsed_days: 5,
       scheduled_days: 15,
-      review: 1627849200000,
+      review: new Date(1627849200000),
     },
     {
       noteId: "note2",
       ord: 2,
       rating: 4,
       state: 3,
-      due: 1627849200000,
+      due: new Date(1627849200000),
       stability: 0.7,
       difficulty: 0.5,
       elapsed_days: 12,
       last_elapsed_days: 7,
       scheduled_days: 17,
-      review: 1627849200000,
+      review: new Date(1627849200000),
     },
   ]);
 });

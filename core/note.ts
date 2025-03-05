@@ -6,6 +6,11 @@ export interface Note {
   /** note ID */
   id: string;
 
+  /**
+   * the ID of the lines the node contains
+   */
+  range: Set<string>;
+
   created: number;
 
   /** updated time of the note */
@@ -31,7 +36,7 @@ export function* parseNotes(
   /** 現在読んでいる`pack.rows[0]`の行番号 */
   let counter = 0;
   let processingNote: Note | undefined;
-  let indent = 0;
+  let noteIndent = 0;
 
   // # 記法解説
   // ## 穴埋め
@@ -67,6 +72,8 @@ export function* parseNotes(
   // - GUIDはAnkiと互換性があるように生成される
   // - GUIDが指定されていない場合は、format時に自動生成される
   // - 同じGUIDを指定された箇条書きが複数ある場合は、最後の箇条書きで上書きされる
+  //   - ......としたいところだが、現状はどちらも返してしまっている
+  //   - Note IDの重複をいかなる場合も許さないようにするか、projectとtitleが違えば重複も許可するかは考え中
   // # formatting
   // - GUIDが省略されている箇所を埋める
   // - `parseNotes`で`Note`の探索と同時に行う
@@ -78,9 +85,10 @@ export function* parseNotes(
         break;
       case "line": {
         // reset indent and guid when a shallower indent block is found
-        if (block.indent >= indent) {
+        if (block.indent <= noteIndent || block.nodes.length === 0) {
           if (processingNote) yield processingNote;
           processingNote = undefined;
+          noteIndent = 0;
         }
 
         // detect note GUID written in the head of the line
@@ -89,16 +97,18 @@ export function* parseNotes(
           if (processingNote) yield processingNote;
           processingNote = {
             id: head.text,
+            range: new Set([lines[counter].id]),
             updated: lines[counter].updated,
             created: lines[counter].created,
             clozeDeletions: new Set(),
           };
-          indent = block.indent;
+          noteIndent = block.indent;
         }
         if (processingNote) {
           processingNote.clozeDeletions = processingNote.clozeDeletions.union(
             detectClozeDeletion(block.nodes, clozeDecorationMark),
           );
+          processingNote.range.add(lines[counter].id);
         }
         counter++;
         break;

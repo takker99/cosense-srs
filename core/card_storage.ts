@@ -1,14 +1,13 @@
-import type { CardInput } from "ts-fsrs";
+import type { Card } from "ts-fsrs";
 import type { Path } from "./path.ts";
 import { type FetchError, getTable, type TableError } from "@cosense/std/rest";
 import { patch } from "@cosense/std/browser/websocket";
 import { CsvParseStream } from "@std/csv";
-import { createOk, isErr, type Result } from "option-t/plain_result";
+import { createOk, isErr, type Result, unwrapErr } from "option-t/plain_result";
 import { type Node, parse } from "@progfay/scrapbox-parser";
+import { emptyStream } from "./empty_stream.ts";
 
-export interface CosenseCard extends Omit<CardInput, "due"> {
-  due: number;
-}
+export interface CosenseCard extends Card {}
 
 export interface CardStorageLocation extends Path {
   username: string;
@@ -27,7 +26,13 @@ export const readCards = async (
   );
   const stream = res.clone().body;
   const result = await getTable.fromResponse(res);
-  if (isErr(result)) return result;
+  if (isErr(result)) {
+    // When the table is not created yet.
+    if (unwrapErr(result).name === "NotFoundError") {
+      return createOk(emptyStream());
+    }
+    return result;
+  }
   if (!stream) throw new Error("This HTTP response has no body.");
   return createOk(
     stream.pipeThrough(new TextDecoderStream()).pipeThrough(cardStream()),
@@ -92,8 +97,10 @@ export const cardStream = (
               reps: Number(reps),
               lapses: Number(lapses),
               state: Number(state),
-              due: Number(due),
-              last_review: Number(last_review),
+              due: new Date(Number(due)),
+              last_review: last_review === "undefined"
+                ? undefined
+                : new Date(Number(last_review)),
             }]);
           },
         },
@@ -147,13 +154,13 @@ export function* update(
           );
           break;
         }
-        const firstRow = block.cells.at(0)?.map?.(raw)?.join?.("\t");
-        if (!hasHeader && firstRow !== header) {
+        if (!hasHeader) {
           yield ` ${indent}${header}`;
           hasHeader = true;
         }
-        if (firstRow) yield ` ${indent}${firstRow}`;
-        for (const rows of block.cells.slice(1)) {
+        const firstRow = block.cells.at(0)?.map?.(raw)?.join?.("\t");
+        if (firstRow === header) block.cells.splice(0, 1);
+        for (const rows of block.cells) {
           const id = toCardId(raw(rows[0]), raw(rows[1]) as `${number}`);
           const card = cards.get(id);
           if (!card) {
@@ -198,18 +205,31 @@ const header =
 
 const stringify = (id: CardId, card: CosenseCard) => {
   const [noteId, ord] = extractCardId(id);
-  return `${noteId}\t${ord}\t${card.state}\t${card.due}\t${card.stability}\t${card.difficulty}\t${card.elapsed_days}\t${card.scheduled_days}\t${card.reps}\t${card.lapses}\t${card.last_review}`;
+  return `${noteId}\t${ord}\t${card.state}\t${card.due.getTime()}\t${card.stability}\t${card.difficulty}\t${card.elapsed_days}\t${card.scheduled_days}\t${card.reps}\t${card.lapses}\t${card.last_review?.getTime?.()}`;
 };
 
 const toTableName = (username: string) => `${username}-card`;
 
 export type CardId = `${string}-${number}`;
 
-const toCardId = (
+export const toCardId = (
   noteId: string,
   ord: `${number}` | number,
 ): CardId => `${noteId}-${ord}`;
-const extractCardId = (id: CardId): [string, number] => {
+
+/**
+ * Break down `id` into a note ID and a card ordinal number.
+ * @param id A card ID
+ * @returns A tuple of a note ID and a card ordinal number
+ *
+ * @example
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ *
+ * assertEquals(extractCardId(";)f$&p&/-1"), [";)f$&p&/", 1]);
+ * ```
+ */
+export const extractCardId = (id: CardId): [string, number] => {
   const noteId = id.slice(0, id.lastIndexOf("-"));
   const ord = parseInt(id.split("-").pop() ?? "0");
   return [noteId, ord];
