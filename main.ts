@@ -2,14 +2,7 @@ import { getPage } from "@cosense/std/rest";
 import { editor, getLineDOM } from "@cosense/std/browser/dom";
 import { isErr, unwrapOk } from "option-t/plain_result";
 import { type Note, parseNotes } from "./core/note.ts";
-import {
-  type CardId,
-  type CosenseCard,
-  extractCardId,
-  readCards,
-  toCardId,
-  writeCards,
-} from "./core/card_storage.ts";
+import { readCards, writeCards } from "./core/card_storage.ts";
 import { createEmptyCard, FSRS, type Grade, Rating, State } from "ts-fsrs";
 import { writeReviewLog } from "./core/review_log_storage.ts";
 import { shuffle } from "@std/random/shuffle";
@@ -17,6 +10,12 @@ import { flatten } from "@core/iterutil/flatten";
 import { map } from "@core/iterutil/map";
 import { reduce } from "@core/iterutil/reduce";
 import { showFlashCardController } from "./ui/flash_card_panel.tsx";
+import {
+  type CardId,
+  type CosenseCard,
+  extractCardId,
+  toCardId,
+} from "./core/card.ts";
 
 export const startReview = async (project: string, title: string) => {
   const res = await getPage(project, title);

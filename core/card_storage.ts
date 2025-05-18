@@ -1,4 +1,3 @@
-import type { Card } from "ts-fsrs";
 import type { Path } from "./path.ts";
 import { type FetchError, getTable, type TableError } from "@cosense/std/rest";
 import { patch } from "@cosense/std/browser/websocket";
@@ -6,9 +5,12 @@ import { CsvParseStream } from "@std/csv";
 import { createOk, isErr, type Result, unwrapErr } from "option-t/plain_result";
 import { type Node, parse } from "@progfay/scrapbox-parser";
 import { emptyStream } from "./empty_stream.ts";
-
-/** Represents a card information in `cosense-srs` */
-export interface CosenseCard extends Card {}
+import {
+  type CardId,
+  type CosenseCard,
+  extractCardId,
+  toCardId,
+} from "./card.ts";
 
 export interface CardStorageLocation extends Path {
   /** username
@@ -266,28 +268,3 @@ const stringify = (id: CardId, card: CosenseCard) => {
 };
 
 const toTableName = (username: string) => `${username}-card`;
-
-export type CardId = `${string}-${number}`;
-
-export const toCardId = (
-  noteId: string,
-  ord: `${number}` | number,
-): CardId => `${noteId}-${ord}`;
-
-/**
- * Break down `id` into a note ID and a card ordinal number.
- * @param id A card ID
- * @returns A tuple of a note ID and a card ordinal number
- *
- * @example
- * ```ts
- * import { assertEquals } from "@std/assert/equals";
- *
- * assertEquals(extractCardId(";)f$&p&/-1"), [";)f$&p&/", 1]);
- * ```
- */
-export const extractCardId = (id: CardId): [noteId: string, ord: number] => {
-  const noteId = id.slice(0, id.lastIndexOf("-"));
-  const ord = parseInt(id.split("-").pop() ?? "0");
-  return [noteId, ord];
-};

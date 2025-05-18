@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert/equals";
-import { type CardId, type CosenseCard, update } from "./card_storage.ts";
+import { update } from "./card_storage.ts";
+import type { CardId, CosenseCard } from "./card.ts";
 
 Deno.test("update should yield the title block", () => {
   const text = "Sample Title\n";
