@@ -1,10 +1,5 @@
 import { assertEquals } from "@std/assert/equals";
-import {
-  type CardId,
-  cardStream,
-  type CosenseCard,
-  update,
-} from "./card_storage.ts";
+import { type CardId, type CosenseCard, update } from "./card_storage.ts";
 
 Deno.test("update should yield the title block", () => {
   const text = "Sample Title\n";
@@ -172,40 +167,5 @@ Deno.test("update should handle text with no blocks correctly", () => {
     "Just some random text without any blocks.",
     "table:testUser-card",
     " noteId\tord\tstate\tdue\tstability\tdifficulty\telapsed_days\tscheduled_days\tlearning_steps\treps\tlapses\tlast_review",
-  ]);
-});
-
-Deno.test("cardStream should parse CSV correctly", async () => {
-  const result = ReadableStream.from([
-    "noteId,ord,state,due,stability,difficulty,elapsed_days,scheduled_days,learning_steps,reps,lapses,last_review\n",
-    "note1,1,3,1627849200000,0.5,0.3,10,5,0,15,2,1627849200000\n",
-    "note2,2,2,1627849200000,0.7,0.5,12,7,0,17,5,undefined\n",
-  ]).pipeThrough(cardStream());
-
-  assertEquals(await Array.fromAsync(result), [
-    ["note1-1", {
-      state: 3,
-      due: new Date(1627849200000),
-      stability: 0.5,
-      difficulty: 0.3,
-      elapsed_days: 10,
-      scheduled_days: 5,
-      learning_steps: 0,
-      reps: 15,
-      lapses: 2,
-      last_review: new Date(1627849200000),
-    }],
-    ["note2-2", {
-      state: 2,
-      due: new Date(1627849200000),
-      stability: 0.7,
-      difficulty: 0.5,
-      elapsed_days: 12,
-      scheduled_days: 7,
-      learning_steps: 0,
-      reps: 17,
-      lapses: 5,
-      last_review: undefined,
-    }],
   ]);
 });

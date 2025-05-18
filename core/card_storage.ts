@@ -7,12 +7,21 @@ import { createOk, isErr, type Result, unwrapErr } from "option-t/plain_result";
 import { type Node, parse } from "@progfay/scrapbox-parser";
 import { emptyStream } from "./empty_stream.ts";
 
+/** Represents a card information in `cosense-srs` */
 export interface CosenseCard extends Card {}
 
 export interface CardStorageLocation extends Path {
+  /** username
+   *
+   * card storageのtable nameを作るのに使われる
+   */
   username: string;
 }
 
+/** card storageからcardsを読み込む
+ *
+ * @param init card storageへのパス
+ */
 export const readCards = async (
   init: CardStorageLocation,
 ): Promise<
@@ -39,7 +48,48 @@ export const readCards = async (
   );
 };
 
-/** Transform a stream `string` into a stream {@linkcode CosenseCard}. */
+/** Transform a stream `string` into a stream {@linkcode CosenseCard}.
+ *
+ * @internal
+ *
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ *
+ * const result = ReadableStream.from([
+ *   "noteId,ord,state,due,stability,difficulty,elapsed_days,scheduled_days,learning_steps,reps,lapses,last_review\n",
+ *   "note1,1,3,1627849200000,0.5,0.3,10,5,0,15,2,1627849200000\n",
+ *   "note2,2,2,1627849200000,0.7,0.5,12,7,0,17,5,undefined\n",
+ * ]).pipeThrough(cardStream());
+
+ * assertEquals(await Array.fromAsync(result), [
+ *   ["note1-1", {
+ *     state: 3,
+ *     due: new Date(1627849200000),
+ *     stability: 0.5,
+ *     difficulty: 0.3,
+ *     elapsed_days: 10,
+ *     scheduled_days: 5,
+ *     learning_steps: 0,
+ *     reps: 15,
+ *     lapses: 2,
+ *     last_review: new Date(1627849200000),
+ *   }],
+ *   ["note2-2", {
+ *     state: 2,
+ *     due: new Date(1627849200000),
+ *     stability: 0.7,
+ *     difficulty: 0.5,
+ *     elapsed_days: 12,
+ *     scheduled_days: 7,
+ *     learning_steps: 0,
+ *     reps: 17,
+ *     lapses: 5,
+ *     last_review: undefined,
+ *   }],
+ * ]);
+ * ```
+ *
+ */
 export const cardStream = (
   writableStrategy?: QueuingStrategy<string>,
   readableStrategy?: QueuingStrategy<[CardId, CosenseCard]>,
@@ -114,6 +164,10 @@ export const cardStream = (
   };
 };
 
+/** card storageにcardsを書き込む
+ *
+ * @param init card storageへのパス
+ */
 export const writeCards = (
   cards: ReadonlyMap<CardId, CosenseCard>,
   init: CardStorageLocation,
