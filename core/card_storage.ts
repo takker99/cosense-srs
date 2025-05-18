@@ -54,6 +54,7 @@ export const cardStream = (
       "difficulty",
       "elapsed_days",
       "scheduled_days",
+      "learning_steps",
       "reps",
       "lapses",
       "last_review",
@@ -79,6 +80,7 @@ export const cardStream = (
               difficulty,
               elapsed_days,
               scheduled_days,
+              learning_steps,
               reps,
               lapses,
               last_review,
@@ -94,6 +96,7 @@ export const cardStream = (
               difficulty: Number(difficulty),
               elapsed_days: Number(elapsed_days),
               scheduled_days: Number(scheduled_days),
+              learning_steps: Number(learning_steps),
               reps: Number(reps),
               lapses: Number(lapses),
               state: Number(state),
@@ -201,11 +204,11 @@ export function* update(
 const raw = (nodes: Node[]) => nodes.map((node) => node.raw).join("");
 
 const header =
-  "noteId\tord\tstate\tdue\tstability\tdifficulty\telapsed_days\tscheduled_days\treps\tlapses\tlast_review";
+  "noteId\tord\tstate\tdue\tstability\tdifficulty\telapsed_days\tscheduled_days\tlearning_steps\treps\tlapses\tlast_review";
 
 const stringify = (id: CardId, card: CosenseCard) => {
   const [noteId, ord] = extractCardId(id);
-  return `${noteId}\t${ord}\t${card.state}\t${card.due.getTime()}\t${card.stability}\t${card.difficulty}\t${card.elapsed_days}\t${card.scheduled_days}\t${card.reps}\t${card.lapses}\t${card.last_review?.getTime?.()}`;
+  return `${noteId}\t${ord}\t${card.state}\t${card.due.getTime()}\t${card.stability}\t${card.difficulty}\t${card.elapsed_days}\t${card.scheduled_days}\t${card.learning_steps}\t${card.reps}\t${card.lapses}\t${card.last_review?.getTime?.()}`;
 };
 
 const toTableName = (username: string) => `${username}-card`;
@@ -229,7 +232,7 @@ export const toCardId = (
  * assertEquals(extractCardId(";)f$&p&/-1"), [";)f$&p&/", 1]);
  * ```
  */
-export const extractCardId = (id: CardId): [string, number] => {
+export const extractCardId = (id: CardId): [noteId: string, ord: number] => {
   const noteId = id.slice(0, id.lastIndexOf("-"));
   const ord = parseInt(id.split("-").pop() ?? "0");
   return [noteId, ord];

@@ -12,10 +12,9 @@ const table =
  *
  * @example
  * ```ts
- * import { noteGUIDRegExp } from "./core/make_note_guid";
  * import { assert } from "@std/assert/assert";
  *
- * assert(noteGUIDRegExp.test("`*8iqw@;(`"));
+ * assert(noteGUIDRegExp.test("*8iqw@;("));
  * ```
  */
 export const noteGUIDRegExp = /^[\w\d!#$%&()*+,\-./:;<=>?@\[\]^_{|}~]+$/;

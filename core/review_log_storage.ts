@@ -59,6 +59,7 @@ export const revLogStream = (
       "elapsed_days",
       "last_elapsed_days",
       "scheduled_days",
+      "learning_steps",
       "review",
     ] as const satisfies (keyof RevLog)[],
     skipFirstRow: true,
@@ -82,6 +83,7 @@ export const revLogStream = (
               elapsed_days,
               last_elapsed_days,
               scheduled_days,
+              learning_steps,
               review,
             },
             controller,
@@ -94,6 +96,7 @@ export const revLogStream = (
               elapsed_days: Number(elapsed_days),
               last_elapsed_days: Number(last_elapsed_days),
               scheduled_days: Number(scheduled_days),
+              learning_steps: Number(learning_steps),
               rating: Number(rating),
               state: Number(state),
               due: new Date(Number(due)),
@@ -183,10 +186,10 @@ export function* update(
 const raw = (nodes: Node[]) => nodes.map((node) => node.raw).join("");
 
 const header =
-  "noteId\tord\trating\tstate\tdue\tstability\tdifficulty\telapsed_days\tlast_elapsed_days\tscheduled_days\treview";
+  "noteId\tord\trating\tstate\tdue\tstability\tdifficulty\telapsed_days\tlast_elapsed_days\tscheduled_days\tlearning_steps\treview";
 
 const stringify = (revLog: RevLog) => {
-  return `${revLog.noteId}\t${revLog.ord}\t${revLog.rating}\t${revLog.state}\t${revLog.due.getTime()}\t${revLog.stability}\t${revLog.difficulty}\t${revLog.elapsed_days}\t${revLog.last_elapsed_days}\t${revLog.scheduled_days}\t${revLog.review.getTime()}`;
+  return `${revLog.noteId}\t${revLog.ord}\t${revLog.rating}\t${revLog.state}\t${revLog.due.getTime()}\t${revLog.stability}\t${revLog.difficulty}\t${revLog.elapsed_days}\t${revLog.last_elapsed_days}\t${revLog.scheduled_days}\t${revLog.learning_steps}\t${revLog.review.getTime()}`;
 };
 
 const toTableName = (username: string) => `${username}-revlog`;

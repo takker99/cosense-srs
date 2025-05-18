@@ -1,7 +1,9 @@
 import { type Decoration, type Node, parse } from "@progfay/scrapbox-parser";
 import type { Line as BaseLine } from "./type.ts";
 import { noteGUIDRegExp } from "./make_note_guid.ts";
+export type { Decoration };
 
+/** Represents a Note object in `cosense-srs` */
 export interface Note {
   /** note ID */
   id: string;
@@ -11,6 +13,7 @@ export interface Note {
    */
   range: Set<string>;
 
+  /** created time of the note */
   created: number;
 
   /** updated time of the note */
@@ -126,6 +129,7 @@ export function* parseNotes(
   if (processingNote) yield processingNote;
 }
 
+/** *系は無視する */
 export type AsteriskDecorationChar =
   | "*-1"
   | "*-2"
