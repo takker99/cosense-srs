@@ -10,7 +10,7 @@ import {
   toCardId,
   writeCards,
 } from "./core/card_storage.ts";
-import { createEmptyCard, FSRS, Rating, State } from "ts-fsrs";
+import { createEmptyCard, FSRS, type Grade, Rating, State } from "ts-fsrs";
 import { writeReviewLog } from "./core/review_log_storage.ts";
 import { shuffle } from "@std/random/shuffle";
 import { flatten } from "@core/iterutil/flatten";
@@ -73,13 +73,7 @@ export const startReview = async (project: string, title: string) => {
         const logItem = f.next(
           cardStateInLoop.card,
           new Date(),
-          state === "easy"
-            ? Rating.Easy
-            : state === "good"
-            ? Rating.Good
-            : state === "hard"
-            ? Rating.Hard
-            : Rating.Again,
+          toRating(state),
         );
         // TODO: 単にDBに書き込むだけでなく、cardsInThePageにも反映させる必要がある
         // countsが変わるとともに、cardsのstateも変わる
@@ -185,3 +179,12 @@ const makeAnswerModeCSS = (note: Note) =>
       "",
     )
   })) strong .deco-\\! span.char-index{visibility:hidden}`;
+
+const toRating = (state: "easy" | "good" | "hard" | "again"): Grade =>
+  state === "easy"
+    ? Rating.Easy
+    : state === "good"
+    ? Rating.Good
+    : state === "hard"
+    ? Rating.Hard
+    : Rating.Again;
