@@ -32,6 +32,7 @@
     "jsr:@takker/md5@0.1": "0.1.0",
     "npm:option-t@51": "51.1.1",
     "npm:option-t@53": "53.0.0",
+    "npm:preact@10": "10.26.6",
     "npm:preact@^10.26.6": "10.26.6",
     "npm:socket.io-client@^4.7.5": "4.8.1",
     "npm:ts-fsrs@5": "5.0.0"

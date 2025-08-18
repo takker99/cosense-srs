@@ -1,22 +1,21 @@
 {
-  "name": "@takker/cosense-srs",
-  "version": "0.0.0",
-  "exports": {
-    "./core": "./core/mod.ts",
-    "./app": "./ui/flash_card_panel.tsx"
-  },
-  "tasks": {
-    "fix": "deno fmt && deno lint --fix && deno doc --lint ./core/mod.ts && deno test --allow-env --allow-read=./ --doc --parallel --shuffle && deno publish --dry-run --allow-dirty",
-    "check": "deno fmt --check && deno lint && deno doc --lint ./core/mod.ts && deno test --allow-env --allow-read=./ --doc --parallel --shuffle && deno publish --dry-run",
-    "coverage": "deno test --allow-env --allow-read=./ --parallel --shuffle --coverage && deno coverage --html",
-    // from https://github.com/jsr-core/unknownutil/blob/v4.2.2/deno.jsonc#L84-L85
-    "update": "deno run --allow-env --allow-read --allow-write=. --allow-run=git,deno --allow-net=jsr.io,registry.npmjs.org jsr:@molt/cli",
-    "update:commit": "deno task -q update --commit --prefix deps: --pre-commit=fix"
+  "compilerOptions": {
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "deno.ns"
+    ]
   },
   "exclude": [
     "docs/",
     "coverage/"
   ],
+  "exports": {
+    "./app": "./ui/flash_card_panel.tsx",
+    "./core": "./core/mod.ts"
+  },
   "imports": {
     "@core/iterutil": "jsr:@core/iterutil@^0.9.0",
     "@core/unknownutil": "jsr:@core/unknownutil@^4.3.0",
@@ -33,5 +32,33 @@
     "option-t": "npm:option-t@^53.0.0",
     "preact": "npm:preact@^10.26.6",
     "ts-fsrs": "npm:ts-fsrs@^5.0.0"
-  }
+  },
+  "name": "@takker/cosense-srs",
+  "tasks": {
+    "check": {
+      "command": "deno fmt --check && deno lint && deno publish --dry-run",
+      "dependencies": [
+        "type-check",
+        "type-check",
+        "doc:lint",
+        "test"
+      ]
+    },
+    "coverage": "deno test --allow-env --allow-read=./ --doc --parallel --shuffle --coverage && deno coverage --html",
+    "doc": "deno doc --html ./core/mod.ts",
+    "doc:lint": "deno doc --lint ./core/mod.ts",
+    "fix": {
+      "command": "deno fmt && deno lint --fix && deno publish --dry-run --allow-dirty",
+      "dependencies": [
+        "type-check",
+        "doc:lint",
+        "test"
+      ]
+    },
+    "test": "deno test --allow-env --allow-read=./ --doc --parallel --shuffle --no-check",
+    "type-check": "deno check --remote **/*.ts",
+    // from https://github.com/jsr-core/unknownutil/blob/v4.2.2/deno.jsonc#L84-L85
+    "update": "deno outdated --update"
+  },
+  "version": "0.0.0"
 }

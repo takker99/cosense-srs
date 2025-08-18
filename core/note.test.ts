@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert/equals";
+import { assertEquals } from "@std/assert";
 import json from "./sample-page1.json" with { type: "json" };
 import { parseNotes } from "./note.ts";
 
@@ -51,4 +51,59 @@ Deno.test("parseNotes", () => {
       updated: 1729064431,
     },
   ]);
+});
+
+// --- Merged from note_additional.test.ts ---
+import type { Line } from "./type.ts";
+const makeLine = (text: string, id: string, created = 0, updated = 0): Line => ({
+  text,
+  id,
+  created,
+  updated,
+});
+
+Deno.test("parseNotes returns empty on no lines", () => {
+  assertEquals([...parseNotes([], "!")], []);
+});
+
+Deno.test("parseNotes single GUID line yields one note", () => {
+  const lines: Line[] = [
+    makeLine("Title", "t"),
+    makeLine("`GUID1` text", "l1", 1, 2),
+  ];
+  const notes = [...parseNotes(lines, "!")];
+  assertEquals(notes.length, 1);
+  assertEquals(notes[0].id, "GUID1");
+});
+
+Deno.test("parseNotes GUID mid sequence flush previous", () => {
+  const lines: Line[] = [
+    makeLine("Title", "t"),
+    makeLine("`G1` a", "a", 1, 1),
+    makeLine("  child bullet", "b", 1, 1),
+    makeLine("`G2` c", "c", 2, 2),
+  ];
+  const notes = [...parseNotes(lines, "!")];
+  assertEquals(notes.map((n) => n.id), ["G1", "G2"]);
+});
+
+Deno.test("parseNotes indentation shallower closes note", () => {
+  const lines: Line[] = [
+    makeLine("Title", "t"),
+    makeLine("`G1` a", "a"),
+    makeLine("  child", "b"),
+    makeLine("top resets", "c"),
+  ];
+  const notes = [...parseNotes(lines, "!")];
+  assertEquals(notes.length, 1);
+});
+
+Deno.test("parseNotes ignores lines without GUID", () => {
+  const lines: Line[] = [
+    makeLine("Title", "t"),
+    makeLine("no guid here", "a"),
+    makeLine("still none", "b"),
+  ];
+  const notes = [...parseNotes(lines, "!")];
+  assertEquals(notes.length, 0);
 });

@@ -27,6 +27,8 @@ export const toCardId = (
  */
 export const extractCardId = (id: CardId): [noteId: string, ord: number] => {
   const noteId = id.slice(0, id.lastIndexOf("-"));
-  const ord = parseInt(id.split("-").pop() ?? "0");
+  const raw = id.split("-").pop() ?? "0";
+  const parsed = parseInt(raw);
+  const ord = Number.isNaN(parsed) ? 0 : parsed;
   return [noteId, ord];
 };

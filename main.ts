@@ -3,19 +3,50 @@ import { editor, getLineDOM } from "@cosense/std/browser/dom";
 import { isErr, unwrapOk } from "option-t/plain_result";
 import { type Note, parseNotes } from "./core/note.ts";
 import { readCards, writeCards } from "./core/card_storage.ts";
-import { createEmptyCard, FSRS, type Grade, Rating, State } from "ts-fsrs";
+import { FSRS } from "ts-fsrs";
 import { writeReviewLog } from "./core/review_log_storage.ts";
 import { shuffle } from "@std/random/shuffle";
 import { flatten } from "@core/iterutil/flatten";
 import { map } from "@core/iterutil/map";
 import { reduce } from "@core/iterutil/reduce";
 import { showFlashCardController } from "./ui/flash_card_panel.tsx";
+import type { CardId } from "./core/card.ts";
 import {
-  type CardId,
-  type CosenseCard,
-  extractCardId,
-  toCardId,
-} from "./core/card.ts";
+  applyAnswer,
+  buildInitialCardStates,
+  buildQueues,
+  classifyAndCount,
+  loadCardsForPage,
+  pickNext,
+  summarizeSession,
+  toRating,
+  type CardState,
+  type Queues,
+  enqueue,
+} from "./core/session.ts";
+
+// --- Phase A support types ---
+const createHUD = () => {
+  const el = document.createElement("div");
+  el.style.position = "fixed";
+  el.style.top = "8px";
+  el.style.right = "12px";
+  el.style.zIndex = "302";
+  el.style.font = "12px/1.4 ui-monospace,monospace";
+  el.style.background = "#111a";
+  el.style.padding = "4px 8px";
+  el.style.borderRadius = "4px";
+  document.body.appendChild(el);
+  return {
+    update(q: Queues, answered: number) {
+      el.textContent =
+        `New:${q.New.length} Lrn:${q.learning.length} Rev:${q.review.length} Ans:${answered}`;
+    },
+    remove() {
+      el.remove();
+    },
+  };
+};
 
 export const startReview = async (project: string, title: string) => {
   const res = await getPage(project, title);
@@ -27,7 +58,7 @@ export const startReview = async (project: string, title: string) => {
   const targetCardIds = flatten(
     map(
       notes.values(),
-      (note) => map(note.clozeDeletions, (ord) => toCardId(note.id, ord)),
+      (note) => map(note.clozeDeletions, (ord) => ({ noteId: note.id, ord })),
     ),
   );
 
@@ -39,25 +70,26 @@ export const startReview = async (project: string, title: string) => {
 
   const res2 = await readCards(cardStorageLocation);
   if (isErr(res2)) return res2;
-  const cardsInThePage = await loadCard(targetCardIds, unwrapOk(res2));
+  const cardIdsIterable = map(targetCardIds, (p) => `${p.noteId}-${p.ord}` as CardId);
+  const cardsInThePage = await loadCardsForPage(cardIdsIterable, unwrapOk(res2));
   const [newCardsCount, learningCardsCount, reviewCardsCount] =
     classifyAndCount(cardsInThePage.values());
-  alert(
-    `New: ${newCardsCount}, Learning: ${learningCardsCount}, Review: ${reviewCardsCount}`,
-  );
-  if (newCardsCount + learningCardsCount + reviewCardsCount === 0) return;
+  if (newCardsCount + learningCardsCount + reviewCardsCount === 0) {
+    alert("No cards to review.");
+    return;
+  }
   const f = new FSRS({});
 
-  const shuffledCards = shuffle([...cardsInThePage]);
+  // Build initial queues
+  const initial = shuffle(buildInitialCardStates(notes, cardsInThePage));
+  const queues = buildQueues(initial);
+  let answered = 0;
+  const hud = createHUD();
+  hud.update(queues, answered);
+
   const style = document.createElement("style");
   editor()!.insertAdjacentElement("afterbegin", style);
-  let cardStateInLoop: {
-    id: CardId;
-    card: CosenseCard;
-    noteId: string;
-    note: Note;
-    ord: number;
-  } | undefined;
+  let cardStateInLoop: CardState | undefined;
   try {
     for await (const state of showFlashCardController()) {
       // 正解を表示する
@@ -69,38 +101,47 @@ export const startReview = async (project: string, title: string) => {
 
       // 回答内容をDBに書き込む
       if (cardStateInLoop) {
-        const logItem = f.next(
-          cardStateInLoop.card,
-          new Date(),
-          toRating(state),
-        );
-        // TODO: 単にDBに書き込むだけでなく、cardsInThePageにも反映させる必要がある
-        // countsが変わるとともに、cardsのstateも変わる
-        // 場合によっては、もう一度回答することになるかもしれない
-        const res = await writeCards(
-          new Map([[cardStateInLoop.id, logItem.card]]),
+        const result = applyAnswer(f, cardStateInLoop, toRating(state), new Date());
+        // In-memory update
+        cardsInThePage.set(cardStateInLoop.id, result.updated.card);
+        // Persist (sequential for now)
+        const persistRes = await writeCards(
+          new Map([[cardStateInLoop.id, result.updated.card]]),
           cardStorageLocation,
         );
-        if (isErr(res)) throw res;
-        const res2 = await writeReviewLog(
-          [{
+        if (isErr(persistRes)) throw persistRes;
+        const logRes = await writeReviewLog([
+          {
             noteId: cardStateInLoop.noteId,
             ord: cardStateInLoop.ord,
-            ...logItem.log,
-          }],
-          cardStorageLocation,
-        );
-        if (isErr(res2)) throw res2;
+            rating: result.log.rating as number,
+            state: result.log.state as number,
+            due: new Date(result.log.due as number | Date),
+            stability: result.log.stability as number,
+            difficulty: result.log.difficulty as number,
+            elapsed_days: result.log.elapsed_days as number,
+            last_elapsed_days: result.log.last_elapsed_days as number,
+            scheduled_days: result.log.scheduled_days as number,
+            learning_steps: result.log.learning_steps as number,
+            review: new Date(result.log.review as number | Date),
+          },
+        ], cardStorageLocation);
+        if (isErr(logRes)) throw logRes;
+        answered++;
+        if (result.requeue) enqueue(queues, result.updated);
       }
 
       // 次の問題を用意する
-      const [id, card] = shuffledCards.shift() ?? [];
-      if (!id || !card) break;
-      const [noteId, ord] = extractCardId(id);
-      const note = notes.get(noteId)!;
-      cardStateInLoop = { id, card, noteId, note, ord };
-      style.textContent = makeQuestionModeCSS(note, ord);
-      getLineDOM([...note.range][0])?.scrollIntoView?.({ block: "center" });
+      cardStateInLoop = pickNext(queues);
+      if (!cardStateInLoop) break; // session end
+      style.textContent = makeQuestionModeCSS(
+        cardStateInLoop.note,
+        cardStateInLoop.ord,
+      );
+      getLineDOM([...cardStateInLoop.note.range][0])?.scrollIntoView?.({
+        block: "center",
+      });
+      hud.update(queues, answered);
     }
   } catch (cause) {
     const error = new Error("An error occurred during the review.", { cause });
@@ -108,57 +149,10 @@ export const startReview = async (project: string, title: string) => {
     throw error;
   } finally {
     style.remove();
+    hud.remove();
+  const summary = summarizeSession(answered, queues);
+  alert(`Session Finished. Answered: ${summary.answered}`);
   }
-};
-
-const classifyAndCount = (
-  cards: Iterable<CosenseCard>,
-): [number, number, number] => {
-  let newCardsCount = 0;
-  let learningCardsCount = 0;
-  let reviewCardsCount = 0;
-  for (const card of cards) {
-    switch (card.state) {
-      case State.New:
-        newCardsCount++;
-        break;
-      case State.Learning:
-      case State.Relearning:
-        learningCardsCount++;
-        break;
-      case State.Review:
-        reviewCardsCount++;
-        break;
-    }
-  }
-  return [newCardsCount, learningCardsCount, reviewCardsCount] as const;
-};
-
-/**
- * Load cards from saved cards.
- * If the card is not found in the saved cards, create an empty card.
- * @param cardIds
- * @param savedCards
- * @returns
- */
-const loadCard = async (
-  cardIds: Iterable<CardId>,
-  savedCards:
-    | Iterable<[CardId, CosenseCard]>
-    | AsyncIterable<[CardId, CosenseCard]>,
-): Promise<Map<CardId, CosenseCard>> => {
-  const loadedCards = new Map<CardId, CosenseCard>();
-  const targetCardIds = new Set(cardIds);
-  for await (const [id, card] of savedCards) {
-    if (!targetCardIds.has(id)) continue;
-    loadedCards.set(id, card);
-    targetCardIds.delete(id);
-    if (targetCardIds.size === 0) break;
-  }
-  for (const id of targetCardIds) {
-    loadedCards.set(id, createEmptyCard());
-  }
-  return loadedCards;
 };
 
 const makeQuestionModeCSS = (note: Note, ord: number) =>
@@ -178,12 +172,3 @@ const makeAnswerModeCSS = (note: Note) =>
       "",
     )
   })) strong .deco-\\! span.char-index{visibility:hidden}`;
-
-const toRating = (state: "easy" | "good" | "hard" | "again"): Grade =>
-  state === "easy"
-    ? Rating.Easy
-    : state === "good"
-    ? Rating.Good
-    : state === "hard"
-    ? Rating.Hard
-    : Rating.Again;

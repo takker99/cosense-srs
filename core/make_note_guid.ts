@@ -29,7 +29,8 @@ export const noteGUIDRegExp = /^[\w\d!#$%&()*+,\-./:;<=>?@\[\]^_{|}~]+$/;
  * @returns {string} A unique identifier string for a {@linkcode Note}.
  */
 export const makeNoteGUID = (): string => {
-  let n = Math.min(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER), 1);
+  // Use full range; original code mistakenly clamped to <=1 producing mostly empty or single-char GUIDs.
+  let n = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
   let buf = "";
   while (n > 0) {
     const q = Math.floor(n / table.length);
