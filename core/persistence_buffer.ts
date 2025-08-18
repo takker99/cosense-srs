@@ -17,23 +17,36 @@ import type { CardId } from "./card.ts";
 export interface CardWriteBatch { cards: Map<CardId, CosenseCard>; }
 
 /**
- * Normalized review log entry (FSRS next() 由来フィールド + 拡張予定). Dates は起点で Date 化済。
- * responseTimeMs: (B6) で計測する予定の回答時間 (ms)。存在しない場合は未計測として扱う。
+ * Normalized review log entry (FSRS next() 由来フィールド + 拡張予定).
+ * Datesは生成時点で Date 化済。
+ * @property noteId 親ノートID
+ * @property ord Cloze ordinal (0-based)
+ * @property rating 0..3 (Again=0 / Hard=1 / Good=2 / Easy=3)
+ * @property state FSRS state enum numeric (ts-fsrs State)
+ * @property due 次回予定日時
+ * @property stability FSRS stability 値
+ * @property difficulty FSRS difficulty 値
+ * @property elapsed_days 経過日数 (現在レビューまで)
+ * @property last_elapsed_days 直前レビュー間隔日数
+ * @property scheduled_days FSRS が算出した次回間隔日数
+ * @property learning_steps FSRS 学習ステップ (内部カウンタ)
+ * @property review レビュー実行時刻
+ * @property responseTimeMs (B6) 回答に要した時間(ms) 未計測なら undefined
  */
 export interface ReviewLogRecord {
-  noteId: string; // 親ノートID
-  ord: number; // cloze ordinal
-  rating: number; // 0..3 (Again/Hard/Good/Easy)
-  state: number; // FSRS state enum numeric
-  due: Date; // 次回予定日時
+  noteId: string;
+  ord: number;
+  rating: number;
+  state: number;
+  due: Date;
   stability: number;
   difficulty: number;
   elapsed_days: number;
   last_elapsed_days: number;
   scheduled_days: number;
   learning_steps: number;
-  review: Date; // レビュー実行時刻
-  responseTimeMs?: number; // (B6) optional latency
+  review: Date;
+  responseTimeMs?: number;
 }
 
 /** Dependency injection surface for side-effects (storage / network). */
