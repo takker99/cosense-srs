@@ -14,7 +14,7 @@ import type { CardId } from "./core/card.ts";
 import {
   applyAnswer,
   buildInitialCardStates,
-  buildQueues,
+  buildQueuesWithSiblingBury,
   classifyAndCount,
   loadCardsForPage,
   pickNext,
@@ -23,6 +23,7 @@ import {
   type CardState,
   type Queues,
   enqueue,
+  releaseBuriedIfGraduated,
 } from "./core/session.ts";
 
 // --- Phase A support types ---
@@ -82,7 +83,7 @@ export const startReview = async (project: string, title: string) => {
 
   // Build initial queues
   const initial = shuffle(buildInitialCardStates(notes, cardsInThePage));
-  const queues = buildQueues(initial);
+  const queues = buildQueuesWithSiblingBury(initial);
   let answered = 0;
   const hud = createHUD();
   hud.update(queues, answered);
@@ -128,7 +129,9 @@ export const startReview = async (project: string, title: string) => {
         ], cardStorageLocation);
         if (isErr(logRes)) throw logRes;
         answered++;
-        if (result.requeue) enqueue(queues, result.updated);
+  if (result.requeue) enqueue(queues, result.updated);
+  // Try releasing buried siblings if card graduated to Review
+  releaseBuriedIfGraduated(queues, result.updated);
       }
 
       // 次の問題を用意する

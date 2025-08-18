@@ -18,9 +18,11 @@ export interface Queues {
   learning: CardState[];
   review: CardState[];
   New: CardState[]; // capital N to mirror State.New naming already used
+  // sibling bury support: noteId -> buried sibling CardStates
+  buried: Map<string, CardState[]>;
 }
 
-export const newQueues = (): Queues => ({ learning: [], review: [], New: [] });
+export const newQueues = (): Queues => ({ learning: [], review: [], New: [], buried: new Map() });
 
 export const enqueue = (queues: Queues, cs: CardState) => {
   switch (cs.card.state) {
@@ -43,6 +45,30 @@ export const buildQueues = (cardStates: Iterable<CardState>): Queues => {
   return q;
 };
 
+/** Build queues while burying sibling cards of the same note until the first card graduates from learning. */
+export const buildQueuesWithSiblingBury = (cardStates: Iterable<CardState>): Queues => {
+  const grouped = new Map<string, CardState[]>();
+  for (const cs of cardStates) {
+    let arr = grouped.get(cs.noteId);
+    if (!arr) grouped.set(cs.noteId, arr = []);
+    arr.push(cs);
+  }
+  const q = newQueues();
+  for (const [, list] of grouped) {
+    if (list.length === 0) continue;
+    // deterministic order: existing order of iteration
+    const [head, ...rest] = list;
+    enqueue(q, head);
+    // Only bury siblings if head is New or currently in (Re)Learning short steps; if already Review, release immediately.
+    if (head.card.state === State.New || head.card.state === State.Learning || head.card.state === State.Relearning) {
+      if (rest.length) q.buried.set(head.noteId, rest);
+    } else {
+      for (const cs of rest) enqueue(q, cs);
+    }
+  }
+  return q;
+};
+
 /**
  * Pick next card honouring availability windows for learning cards.
  * Learning queue: skip cards whose dueAt is in the future (push them back to queue tail).
@@ -60,6 +86,17 @@ export const pickNext = (queues: Queues, now = Date.now()): CardState | undefine
     }
   }
   return queues.review.shift() ?? queues.New.shift();
+};
+
+/** Release buried siblings if the answered card has graduated to Review (learningStepIndex cleared & state Review). */
+export const releaseBuriedIfGraduated = (queues: Queues, updated: CardState) => {
+  if (updated.card.state !== State.Review) return;
+  // For safety also require no learningStepIndex present
+  if (updated.learningStepIndex !== undefined) return;
+  const siblings = queues.buried.get(updated.noteId);
+  if (!siblings) return;
+  queues.buried.delete(updated.noteId);
+  for (const cs of siblings) enqueue(queues, cs);
 };
 
 export const classifyAndCount = (
