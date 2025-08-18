@@ -14,7 +14,9 @@ import type { CardId } from "./card.ts";
  *  現状は `Map<CardId, CosenseCard>` 自体を直接 flush に渡すためラッパー未使用だが
  *  将来 diff / 圧縮付加メタデータを添付する余地を残す目的で定義。 (未使用のため参考用)
  */
-export interface CardWriteBatch { cards: Map<CardId, CosenseCard>; }
+export interface CardWriteBatch {
+  cards: Map<CardId, CosenseCard>;
+}
 
 /**
  * Normalized review log entry (FSRS next() 由来フィールド + 拡張予定).
@@ -69,7 +71,11 @@ export interface BufferConfig {
 }
 
 /** デフォルト閾値: 少量学習セッションで過剰 flush を避けつつ応答性確保するバランス設定。 */
-export const defaultBufferConfig: BufferConfig = { maxCards: 10, maxLogs: 10, maxAgeMs: 30_000 };
+export const defaultBufferConfig: BufferConfig = {
+  maxCards: 10,
+  maxLogs: 10,
+  maxAgeMs: 30_000,
+};
 
 /**
  * Collects incremental card + log updates until policy triggers a flush.
@@ -84,7 +90,10 @@ export class PersistenceBuffer {
   #cards = new Map<CardId, CosenseCard>();
   #logs: ReviewLogRecord[] = [];
   #lastFlush = Date.now();
-  constructor(private fns: FlushFns, private cfg: BufferConfig = defaultBufferConfig) {}
+  constructor(
+    private fns: FlushFns,
+    private cfg: BufferConfig = defaultBufferConfig,
+  ) {}
 
   /** 最新状態でカードをバッチへ登録 (同一IDは上書き -> diff最適化は未実装). */
   addCard(id: CardId, card: CosenseCard) {
@@ -109,8 +118,8 @@ export class PersistenceBuffer {
     const logs = this.#logs;
     this.#cards = new Map();
     this.#logs = [];
-    await this.fns.writeCards(cards);
-    await this.fns.writeLogs(logs);
+    if (cards.size > 0) await this.fns.writeCards(cards);
+    if (logs.length > 0) await this.fns.writeLogs(logs);
     this.#lastFlush = now;
   }
 

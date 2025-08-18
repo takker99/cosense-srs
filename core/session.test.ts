@@ -1,23 +1,23 @@
-import { assertEquals, assert } from "@std/assert";
-import { FSRS, State, Rating } from "ts-fsrs";
+import { assert, assertEquals } from "@std/assert";
+import { FSRS, Rating, State } from "ts-fsrs";
 import {
   applyAnswer,
   buildInitialCardStates,
   buildQueues,
   buildQueuesWithSiblingBury,
+  type CardState,
   classifyAndCount,
+  computeAccuracy,
   enqueue,
   newQueues,
+  newSessionMetrics,
   pickNext,
+  releaseBuriedIfGraduated,
   summarizeSession,
   toRating,
-  type CardState,
-  releaseBuriedIfGraduated,
-  newSessionMetrics,
   updateMetricsAfterAnswer,
-  computeAccuracy,
 } from "./session.ts";
-import { toCardId, type CardId, type CosenseCard } from "./card.ts";
+import { type CardId, type CosenseCard, toCardId } from "./card.ts";
 import type { Note } from "./note.ts";
 
 // Helper to create a minimal Note
@@ -44,10 +44,12 @@ const baseCard = (state: number): CosenseCard => ({
 Deno.test("buildInitialCardStates + buildQueues distributes by state", () => {
   const n1 = note("n1", [0, 1]);
   const notes = new Map([["n1", n1]]);
-  const cards = new Map([
-    [toCardId("n1", 0), { ...baseCard(State.New) }],
-    [toCardId("n1", 1), { ...baseCard(State.Review) }],
-  ] as const);
+  const cards = new Map(
+    [
+      [toCardId("n1", 0), { ...baseCard(State.New) }],
+      [toCardId("n1", 1), { ...baseCard(State.Review) }],
+    ] as const,
+  );
   const states = buildInitialCardStates(notes as Map<string, Note>, cards);
   const queues = buildQueues(states);
   assertEquals(queues.New.length, 1);
@@ -82,7 +84,10 @@ Deno.test("applyAnswer returns requeue for learning states", () => {
     ord: 0,
   };
   const result = applyAnswer(f as FSRS, cs, Rating.Again);
-  assert(result.requeue, "Should requeue after Again leading to Learning state");
+  assert(
+    result.requeue,
+    "Should requeue after Again leading to Learning state",
+  );
 });
 
 Deno.test("learning steps assign dueAt and rotate until due", () => {
@@ -98,7 +103,10 @@ Deno.test("learning steps assign dueAt and rotate until due", () => {
   // Answer ANY (Again) should keep Learning and schedule dueAt
   let r = applyAnswer(f as FSRS, cs, Rating.Again, new Date(1000));
   // If still in Learning, it should have dueAt scheduled
-  if (r.updated.card.state === State.Learning || r.updated.card.state === State.Relearning) {
+  if (
+    r.updated.card.state === State.Learning ||
+    r.updated.card.state === State.Relearning
+  ) {
     assert(r.requeue);
     assert(r.updated.dueAt! > 1000);
   }
@@ -106,14 +114,22 @@ Deno.test("learning steps assign dueAt and rotate until due", () => {
   enqueue(q, r.updated);
   // Not yet due: pickNext should skip and return undefined (since no other queues)
   const picked1 = pickNext(q, 1000 + 10);
-  if (r.updated.card.state === State.Learning || r.updated.card.state === State.Relearning) {
+  if (
+    r.updated.card.state === State.Learning ||
+    r.updated.card.state === State.Relearning
+  ) {
     assertEquals(picked1, undefined);
   }
   // Advance time beyond dueAt
   const picked2 = pickNext(q, r.updated.dueAt! + 1);
   if (picked2) {
     // Answer GOOD to advance step index (only meaningful if still learning)
-    r = applyAnswer(f as FSRS, picked2, Rating.Good, new Date((r.updated.dueAt ?? 1000) + 1));
+    r = applyAnswer(
+      f as FSRS,
+      picked2,
+      Rating.Good,
+      new Date((r.updated.dueAt ?? 1000) + 1),
+    );
     if (r.updated.learningStepIndex !== undefined) {
       assert(r.updated.learningStepIndex >= 1);
     }
@@ -123,13 +139,18 @@ Deno.test("learning steps assign dueAt and rotate until due", () => {
 Deno.test("sibling bury releases siblings after fabricated graduation", () => {
   const n1 = note("n1", [0, 1]);
   const notes = new Map([["n1", n1]]);
-  const cards = new Map([
-    [toCardId("n1", 0), { ...baseCard(State.New) }],
-    [toCardId("n1", 1), { ...baseCard(State.New) }],
-  ] as const);
+  const cards = new Map(
+    [
+      [toCardId("n1", 0), { ...baseCard(State.New) }],
+      [toCardId("n1", 1), { ...baseCard(State.New) }],
+    ] as const,
+  );
   const states = buildInitialCardStates(notes as Map<string, Note>, cards);
   const queues = buildQueuesWithSiblingBury(states);
-  assertEquals(queues.New.length + queues.learning.length + queues.review.length, 1);
+  assertEquals(
+    queues.New.length + queues.learning.length + queues.review.length,
+    1,
+  );
   assertEquals(queues.buried.get("n1")?.length, 1);
   // 模擬的に卒業後のカード状態を作成 (Review state, transient fieldsなし)
   const graduated: CardState = {
@@ -138,7 +159,8 @@ Deno.test("sibling bury releases siblings after fabricated graduation", () => {
   };
   releaseBuriedIfGraduated(queues, graduated);
   // siblings 解放後: 合計2
-  const totalQueued = queues.New.length + queues.learning.length + queues.review.length;
+  const totalQueued = queues.New.length + queues.learning.length +
+    queues.review.length;
   assertEquals(queues.buried.get("n1"), undefined);
   assertEquals(totalQueued, 2);
 });
@@ -162,18 +184,34 @@ Deno.test("summarizeSession returns remaining counts", () => {
     ord: 0,
   };
   enqueue(queues, cs);
-    const summary = summarizeSession(3, queues, { accuracy: 0, lapses: 0, newIntroduced: 0 });
-    assertEquals(summary.answered, 3);
-    assertEquals(summary.remaining, { New: 1, learning: 0, review: 0 });
-    assertEquals(summary.accuracy, 0);
-    assertEquals(summary.lapses, 0);
-    assertEquals(summary.newIntroduced, 0);
+  const summary = summarizeSession(3, queues, {
+    accuracy: 0,
+    lapses: 0,
+    newIntroduced: 0,
+  });
+  assertEquals(summary.answered, 3);
+  assertEquals(summary.remaining, { New: 1, learning: 0, review: 0 });
+  assertEquals(summary.accuracy, 0);
+  assertEquals(summary.lapses, 0);
+  assertEquals(summary.newIntroduced, 0);
 });
 
 Deno.test("session metrics track accuracy lapses and newIntroduced", () => {
   const metrics = newSessionMetrics();
-  const cs1: CardState = { id: "n1-0" as CardId, card: baseCard(State.New), noteId: "n1", note: note("n1", [0]), ord: 0 };
-  const cs2: CardState = { id: "n1-1" as CardId, card: baseCard(State.New), noteId: "n1", note: note("n1", [1]), ord: 1 };
+  const cs1: CardState = {
+    id: "n1-0" as CardId,
+    card: baseCard(State.New),
+    noteId: "n1",
+    note: note("n1", [0]),
+    ord: 0,
+  };
+  const cs2: CardState = {
+    id: "n1-1" as CardId,
+    card: baseCard(State.New),
+    noteId: "n1",
+    note: note("n1", [1]),
+    ord: 1,
+  };
   updateMetricsAfterAnswer(metrics, cs1, Rating.Good);
   updateMetricsAfterAnswer(metrics, cs2, Rating.Again);
   updateMetricsAfterAnswer(metrics, cs1, Rating.Easy); // second exposure shouldn't increment newIntroduced

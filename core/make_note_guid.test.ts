@@ -8,7 +8,7 @@ Deno.test("makeNoteGUID returns empty when random yields 0 (regex not matched by
     Math.random = () => 0; // n becomes 0 -> while loop skipped -> ""
     const guid = makeNoteGUID();
     assertEquals(guid, "");
-  // Empty GUID path is an edge case (not intended in production), so we don't assert regex.
+    // Empty GUID path is an edge case (not intended in production), so we don't assert regex.
   } finally {
     Math.random = orig;
   }

@@ -15,20 +15,23 @@ import {
   applyAnswer,
   buildInitialCardStates,
   buildQueuesWithSiblingBury,
+  type CardState,
   classifyAndCount,
+  computeAccuracy,
+  enqueue,
   loadCardsForPage,
+  newSessionMetrics,
   pickNext,
+  type Queues,
+  releaseBuriedIfGraduated,
   summarizeSession,
   toRating,
-  type CardState,
-  type Queues,
-  enqueue,
-  releaseBuriedIfGraduated,
-  newSessionMetrics,
   updateMetricsAfterAnswer,
-  computeAccuracy,
 } from "./core/session.ts";
-import { PersistenceBuffer, defaultBufferConfig } from "./core/persistence_buffer.ts";
+import {
+  defaultBufferConfig,
+  PersistenceBuffer,
+} from "./core/persistence_buffer.ts";
 import { showErrorToast, showInfoToast } from "./ui/toast.ts";
 
 // --- Phase A support types ---
@@ -76,8 +79,14 @@ export const startReview = async (project: string, title: string) => {
 
   const res2 = await readCards(cardStorageLocation);
   if (isErr(res2)) return res2;
-  const cardIdsIterable = map(targetCardIds, (p) => `${p.noteId}-${p.ord}` as CardId);
-  const cardsInThePage = await loadCardsForPage(cardIdsIterable, unwrapOk(res2));
+  const cardIdsIterable = map(
+    targetCardIds,
+    (p) => `${p.noteId}-${p.ord}` as CardId,
+  );
+  const cardsInThePage = await loadCardsForPage(
+    cardIdsIterable,
+    unwrapOk(res2),
+  );
   const [newCardsCount, learningCardsCount, reviewCardsCount] =
     classifyAndCount(cardsInThePage.values());
   if (newCardsCount + learningCardsCount + reviewCardsCount === 0) {
@@ -97,6 +106,7 @@ export const startReview = async (project: string, title: string) => {
   const style = document.createElement("style");
   editor()!.insertAdjacentElement("afterbegin", style);
   let cardStateInLoop: CardState | undefined;
+  let cardShownAt: number | undefined; // timestamp ms when current card displayed
   const buffer = new PersistenceBuffer({
     writeCards: async (batch) => {
       const res = await writeCards(batch, cardStorageLocation);
@@ -119,7 +129,12 @@ export const startReview = async (project: string, title: string) => {
 
       // 回答内容をDBに書き込む
       if (cardStateInLoop) {
-        const result = applyAnswer(f, cardStateInLoop, toRating(state), new Date());
+        const result = applyAnswer(
+          f,
+          cardStateInLoop,
+          toRating(state),
+          new Date(),
+        );
         // In-memory update
         cardsInThePage.set(cardStateInLoop.id, result.updated.card);
         // Persist (sequential for now)
@@ -137,13 +152,16 @@ export const startReview = async (project: string, title: string) => {
           scheduled_days: result.log.scheduled_days as number,
           learning_steps: result.log.learning_steps as number,
           review: new Date(result.log.review as number | Date),
+          responseTimeMs: cardShownAt
+            ? Math.round(performance.now() - cardShownAt)
+            : undefined,
         });
         await buffer.maybeFlush();
-  answered++;
-  updateMetricsAfterAnswer(metrics, cardStateInLoop, toRating(state));
-  if (result.requeue) enqueue(queues, result.updated);
-  // Try releasing buried siblings if card graduated to Review
-  releaseBuriedIfGraduated(queues, result.updated);
+        answered++;
+        updateMetricsAfterAnswer(metrics, cardStateInLoop, toRating(state));
+        if (result.requeue) enqueue(queues, result.updated);
+        // Try releasing buried siblings if card graduated to Review
+        releaseBuriedIfGraduated(queues, result.updated);
       }
 
       // 次の問題を用意する
@@ -157,6 +175,7 @@ export const startReview = async (project: string, title: string) => {
         block: "center",
       });
       hud.update(queues, answered);
+      cardShownAt = performance.now();
     }
   } catch (cause) {
     const error = new Error("An error occurred during the review.", { cause });
@@ -172,7 +191,9 @@ export const startReview = async (project: string, title: string) => {
       newIntroduced: metrics.newIntroduced,
     });
     showInfoToast(
-      `Session Finished. Answered: ${summary.answered}\nAccuracy: ${(summary.accuracy * 100).toFixed(1)}%  Lapses: ${summary.lapses}  New: ${summary.newIntroduced}`,
+      `Session Finished. Answered: ${summary.answered}\nAccuracy: ${
+        (summary.accuracy * 100).toFixed(1)
+      }%  Lapses: ${summary.lapses}  New: ${summary.newIntroduced}`,
       8000,
     );
   }

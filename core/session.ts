@@ -1,5 +1,5 @@
 import { createEmptyCard, type FSRS, type Grade, Rating, State } from "ts-fsrs";
-import { toCardId, type CardId, type CosenseCard } from "./card.ts";
+import { type CardId, type CosenseCard, toCardId } from "./card.ts";
 import type { Note } from "./note.ts";
 
 // Core session data structures
@@ -22,7 +22,12 @@ export interface Queues {
   buried: Map<string, CardState[]>;
 }
 
-export const newQueues = (): Queues => ({ learning: [], review: [], New: [], buried: new Map() });
+export const newQueues = (): Queues => ({
+  learning: [],
+  review: [],
+  New: [],
+  buried: new Map(),
+});
 
 export const enqueue = (queues: Queues, cs: CardState) => {
   switch (cs.card.state) {
@@ -46,7 +51,9 @@ export const buildQueues = (cardStates: Iterable<CardState>): Queues => {
 };
 
 /** Build queues while burying sibling cards of the same note until the first card graduates from learning. */
-export const buildQueuesWithSiblingBury = (cardStates: Iterable<CardState>): Queues => {
+export const buildQueuesWithSiblingBury = (
+  cardStates: Iterable<CardState>,
+): Queues => {
   const grouped = new Map<string, CardState[]>();
   for (const cs of cardStates) {
     let arr = grouped.get(cs.noteId);
@@ -60,7 +67,10 @@ export const buildQueuesWithSiblingBury = (cardStates: Iterable<CardState>): Que
     const [head, ...rest] = list;
     enqueue(q, head);
     // Only bury siblings if head is New or currently in (Re)Learning short steps; if already Review, release immediately.
-    if (head.card.state === State.New || head.card.state === State.Learning || head.card.state === State.Relearning) {
+    if (
+      head.card.state === State.New || head.card.state === State.Learning ||
+      head.card.state === State.Relearning
+    ) {
       if (rest.length) q.buried.set(head.noteId, rest);
     } else {
       for (const cs of rest) enqueue(q, cs);
@@ -73,7 +83,10 @@ export const buildQueuesWithSiblingBury = (cardStates: Iterable<CardState>): Que
  * Pick next card honouring availability windows for learning cards.
  * Learning queue: skip cards whose dueAt is in the future (push them back to queue tail).
  */
-export const pickNext = (queues: Queues, now = Date.now()): CardState | undefined => {
+export const pickNext = (
+  queues: Queues,
+  now = Date.now(),
+): CardState | undefined => {
   // process learning queue with temporal gating
   let rotations = queues.learning.length;
   while (rotations-- > 0) {
@@ -89,7 +102,10 @@ export const pickNext = (queues: Queues, now = Date.now()): CardState | undefine
 };
 
 /** Release buried siblings if the answered card has graduated to Review (learningStepIndex cleared & state Review). */
-export const releaseBuriedIfGraduated = (queues: Queues, updated: CardState) => {
+export const releaseBuriedIfGraduated = (
+  queues: Queues,
+  updated: CardState,
+) => {
   if (updated.card.state !== State.Review) return;
   // For safety also require no learningStepIndex present
   if (updated.learningStepIndex !== undefined) return;
@@ -201,11 +217,15 @@ export const applyAnswer = (
   const result = f.next(cs.card, now, grade) as unknown as FsrsNextResultLike;
   let updated: CardState = { ...cs, card: result.card };
   let requeue = false;
-  if (result.card.state === State.Learning || result.card.state === State.Relearning) {
+  if (
+    result.card.state === State.Learning ||
+    result.card.state === State.Relearning
+  ) {
     // compute next short step
-    const currentIndex = (cs.learningStepIndex ?? 0);
+    const currentIndex = cs.learningStepIndex ?? 0;
     const nextIndex = grade === Rating.Again ? currentIndex : currentIndex + 1; // simplistic advancement rule
-    const stepDur = cfg.stepsSeconds[Math.min(nextIndex, cfg.stepsSeconds.length - 1)];
+    const stepDur =
+      cfg.stepsSeconds[Math.min(nextIndex, cfg.stepsSeconds.length - 1)];
     updated = {
       ...updated,
       learningStepIndex: nextIndex,
@@ -246,7 +266,11 @@ export const newSessionMetrics = (): SessionMetricsMutable => ({
   seen: new Set(),
 });
 
-export const updateMetricsAfterAnswer = (m: SessionMetricsMutable, cs: CardState, grade: Grade) => {
+export const updateMetricsAfterAnswer = (
+  m: SessionMetricsMutable,
+  cs: CardState,
+  grade: Grade,
+) => {
   m.answered++;
   if (!m.seen.has(cs.id)) {
     m.seen.add(cs.id);
@@ -256,11 +280,20 @@ export const updateMetricsAfterAnswer = (m: SessionMetricsMutable, cs: CardState
   if (grade === Rating.Again) m.lapses++;
 };
 
-export const computeAccuracy = (m: SessionMetricsMutable): number => m.answered === 0 ? 0 : m.goodOrEasy / m.answered;
+export const computeAccuracy = (m: SessionMetricsMutable): number =>
+  m.answered === 0 ? 0 : m.goodOrEasy / m.answered;
 
-export const summarizeSession = (answered: number, queues: Queues, extra: { accuracy: number; lapses: number; newIntroduced: number }): SessionSummary => ({
+export const summarizeSession = (
+  answered: number,
+  queues: Queues,
+  extra: { accuracy: number; lapses: number; newIntroduced: number },
+): SessionSummary => ({
   answered,
-  remaining: { New: queues.New.length, learning: queues.learning.length, review: queues.review.length },
+  remaining: {
+    New: queues.New.length,
+    learning: queues.learning.length,
+    review: queues.review.length,
+  },
   accuracy: extra.accuracy,
   lapses: extra.lapses,
   newIntroduced: extra.newIntroduced,

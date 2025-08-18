@@ -55,7 +55,12 @@ Deno.test("parseNotes", () => {
 
 // --- Merged from note_additional.test.ts ---
 import type { Line } from "./type.ts";
-const makeLine = (text: string, id: string, created = 0, updated = 0): Line => ({
+const makeLine = (
+  text: string,
+  id: string,
+  created = 0,
+  updated = 0,
+): Line => ({
   text,
   id,
   created,
