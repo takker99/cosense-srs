@@ -225,33 +225,17 @@ export const applyAnswer = (
 export interface SessionSummary {
   answered: number;
   remaining: { New: number; learning: number; review: number };
-  accuracy: number; // (good+easy)/answered
-  lapses: number; // again count
-  newIntroduced: number; // number of distinct New cards that received first answer in this session
+  accuracy: number;
+  lapses: number;
+  newIntroduced: number;
 }
 
-export const summarizeSession = (
-  answered: number,
-  queues: Queues,
-  metrics?: Partial<Pick<SessionSummary, "accuracy" | "lapses" | "newIntroduced">>,
-): SessionSummary => ({
-  answered,
-  remaining: {
-    New: queues.New.length,
-    learning: queues.learning.length,
-    review: queues.review.length,
-  },
-  accuracy: metrics?.accuracy ?? 0,
-  lapses: metrics?.lapses ?? 0,
-  newIntroduced: metrics?.newIntroduced ?? 0,
-});
-
 export interface SessionMetricsMutable {
-  answered: number; // mirror answered param
+  answered: number;
   goodOrEasy: number;
   lapses: number;
   newIntroduced: number;
-  seen: Set<CardId>; // track first-time exposure
+  seen: Set<CardId>;
 }
 
 export const newSessionMetrics = (): SessionMetricsMutable => ({
@@ -262,11 +246,7 @@ export const newSessionMetrics = (): SessionMetricsMutable => ({
   seen: new Set(),
 });
 
-export const updateMetricsAfterAnswer = (
-  m: SessionMetricsMutable,
-  cs: CardState,
-  grade: Grade,
-) => {
+export const updateMetricsAfterAnswer = (m: SessionMetricsMutable, cs: CardState, grade: Grade) => {
   m.answered++;
   if (!m.seen.has(cs.id)) {
     m.seen.add(cs.id);
@@ -276,5 +256,12 @@ export const updateMetricsAfterAnswer = (
   if (grade === Rating.Again) m.lapses++;
 };
 
-export const computeAccuracy = (m: SessionMetricsMutable): number =>
-  m.answered === 0 ? 0 : m.goodOrEasy / m.answered;
+export const computeAccuracy = (m: SessionMetricsMutable): number => m.answered === 0 ? 0 : m.goodOrEasy / m.answered;
+
+export const summarizeSession = (answered: number, queues: Queues, extra: { accuracy: number; lapses: number; newIntroduced: number }): SessionSummary => ({
+  answered,
+  remaining: { New: queues.New.length, learning: queues.learning.length, review: queues.review.length },
+  accuracy: extra.accuracy,
+  lapses: extra.lapses,
+  newIntroduced: extra.newIntroduced,
+});

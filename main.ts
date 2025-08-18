@@ -28,6 +28,7 @@ import {
   updateMetricsAfterAnswer,
   computeAccuracy,
 } from "./core/session.ts";
+import { PersistenceBuffer, defaultBufferConfig } from "./core/persistence_buffer.ts";
 
 // --- Phase A support types ---
 const createHUD = () => {
@@ -95,6 +96,17 @@ export const startReview = async (project: string, title: string) => {
   const style = document.createElement("style");
   editor()!.insertAdjacentElement("afterbegin", style);
   let cardStateInLoop: CardState | undefined;
+  const buffer = new PersistenceBuffer({
+    writeCards: async (batch) => {
+      const res = await writeCards(batch, cardStorageLocation);
+      if (isErr(res)) throw res;
+    },
+    writeLogs: async (logs) => {
+      const res = await writeReviewLog(logs, cardStorageLocation);
+      if (isErr(res)) throw res;
+    },
+  }, defaultBufferConfig);
+
   try {
     for await (const state of showFlashCardController()) {
       // 正解を表示する
@@ -110,28 +122,22 @@ export const startReview = async (project: string, title: string) => {
         // In-memory update
         cardsInThePage.set(cardStateInLoop.id, result.updated.card);
         // Persist (sequential for now)
-        const persistRes = await writeCards(
-          new Map([[cardStateInLoop.id, result.updated.card]]),
-          cardStorageLocation,
-        );
-        if (isErr(persistRes)) throw persistRes;
-        const logRes = await writeReviewLog([
-          {
-            noteId: cardStateInLoop.noteId,
-            ord: cardStateInLoop.ord,
-            rating: result.log.rating as number,
-            state: result.log.state as number,
-            due: new Date(result.log.due as number | Date),
-            stability: result.log.stability as number,
-            difficulty: result.log.difficulty as number,
-            elapsed_days: result.log.elapsed_days as number,
-            last_elapsed_days: result.log.last_elapsed_days as number,
-            scheduled_days: result.log.scheduled_days as number,
-            learning_steps: result.log.learning_steps as number,
-            review: new Date(result.log.review as number | Date),
-          },
-        ], cardStorageLocation);
-        if (isErr(logRes)) throw logRes;
+        buffer.addCard(cardStateInLoop.id, result.updated.card);
+        buffer.addLog({
+          noteId: cardStateInLoop.noteId,
+          ord: cardStateInLoop.ord,
+          rating: result.log.rating as number,
+          state: result.log.state as number,
+          due: new Date(result.log.due as number | Date),
+          stability: result.log.stability as number,
+          difficulty: result.log.difficulty as number,
+          elapsed_days: result.log.elapsed_days as number,
+          last_elapsed_days: result.log.last_elapsed_days as number,
+          scheduled_days: result.log.scheduled_days as number,
+          learning_steps: result.log.learning_steps as number,
+          review: new Date(result.log.review as number | Date),
+        });
+        await buffer.maybeFlush();
   answered++;
   updateMetricsAfterAnswer(metrics, cardStateInLoop, toRating(state));
   if (result.requeue) enqueue(queues, result.updated);
@@ -156,6 +162,7 @@ export const startReview = async (project: string, title: string) => {
     alert(`${error}`);
     throw error;
   } finally {
+    await buffer.flushAndDispose();
     style.remove();
     hud.remove();
   const summary = summarizeSession(answered, queues, {

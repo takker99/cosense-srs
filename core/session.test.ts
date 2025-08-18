@@ -162,9 +162,12 @@ Deno.test("summarizeSession returns remaining counts", () => {
     ord: 0,
   };
   enqueue(queues, cs);
-  const summary = summarizeSession(3, queues);
-  assertEquals(summary.answered, 3);
-  assertEquals(summary.remaining, { New: 1, learning: 0, review: 0 });
+    const summary = summarizeSession(3, queues, { accuracy: 0, lapses: 0, newIntroduced: 0 });
+    assertEquals(summary.answered, 3);
+    assertEquals(summary.remaining, { New: 1, learning: 0, review: 0 });
+    assertEquals(summary.accuracy, 0);
+    assertEquals(summary.lapses, 0);
+    assertEquals(summary.newIntroduced, 0);
 });
 
 Deno.test("session metrics track accuracy lapses and newIntroduced", () => {
