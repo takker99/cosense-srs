@@ -29,6 +29,7 @@ import {
   computeAccuracy,
 } from "./core/session.ts";
 import { PersistenceBuffer, defaultBufferConfig } from "./core/persistence_buffer.ts";
+import { showErrorToast, showInfoToast } from "./ui/toast.ts";
 
 // --- Phase A support types ---
 const createHUD = () => {
@@ -80,7 +81,7 @@ export const startReview = async (project: string, title: string) => {
   const [newCardsCount, learningCardsCount, reviewCardsCount] =
     classifyAndCount(cardsInThePage.values());
   if (newCardsCount + learningCardsCount + reviewCardsCount === 0) {
-    alert("No cards to review.");
+    showInfoToast("No cards to review.");
     return;
   }
   const f = new FSRS({});
@@ -159,20 +160,21 @@ export const startReview = async (project: string, title: string) => {
     }
   } catch (cause) {
     const error = new Error("An error occurred during the review.", { cause });
-    alert(`${error}`);
+    showErrorToast(String(error), 8000);
     throw error;
   } finally {
     await buffer.flushAndDispose();
     style.remove();
     hud.remove();
-  const summary = summarizeSession(answered, queues, {
-    accuracy: computeAccuracy(metrics),
-    lapses: metrics.lapses,
-    newIntroduced: metrics.newIntroduced,
-  });
-  alert(
-    `Session Finished. Answered: ${summary.answered}\nAccuracy: ${(summary.accuracy * 100).toFixed(1)}%\nLapses: ${summary.lapses}\nNew Introduced: ${summary.newIntroduced}`,
-  );
+    const summary = summarizeSession(answered, queues, {
+      accuracy: computeAccuracy(metrics),
+      lapses: metrics.lapses,
+      newIntroduced: metrics.newIntroduced,
+    });
+    showInfoToast(
+      `Session Finished. Answered: ${summary.answered}\nAccuracy: ${(summary.accuracy * 100).toFixed(1)}%  Lapses: ${summary.lapses}  New: ${summary.newIntroduced}`,
+      8000,
+    );
   }
 };
 
