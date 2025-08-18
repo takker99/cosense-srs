@@ -66,15 +66,15 @@ Done 判定基準(AC) と計測指標(KPI) を付与。
 
 補足: A5 では `core/session.ts` を新設し `applyAnswer`, `buildQueues`, `pickNext`, `summarizeSession` など純粋ロジックを分離。`main.ts` は UI + I/O オーケストレーションへ縮退。A6 で新規 `session.test.ts` を追加しキュー優先順位 / 再挿入 / サマリー / rating 変換を検証。Phase A aggregate coverage Lines 84.5%, Branches 93.1% (ポリシー閾値超過)。
 
-## Phase B (学習体験 / 安定性)
-| ID | タスク | 詳細 / Acceptance | P | Effort |
-|----|--------|-------------------|---|--------|
-| B1 | Learning Steps | 設定 [1,10] 分; state Learning の再挿入。 | 5 | M |
-| B2 | Cloze sibling bury | 同一 Note Cloze 初出題後 buryUntil=当日終端。 | 4 | S |
-| B3 | 回答サマリー UI | 正答率, lapses, 学習時間表示。 | 4 | S |
-| B4 | バッチ書込(単純) | 10 件 or 30 秒で flush; 終了時強制 flush。 | 4 | M |
-| B5 | エラー表示改善 | alert→トースト (種類: info/error/retry)。 | 3 | S |
-| B6 | 応答時間計測収集 | show→回答まで ms 記録 revlog 拡張 (任意フィールド)。 | 3 | M |
+## Phase B (学習体験 / 安定性) ✅ 完了 (2025-08-18)
+| ID | タスク | 状態 / 実装要点 | 完了日 |
+|----|--------|----------------|--------|
+| B1 | Learning Steps | `session` で learning steps 再挿入 `[1,10]` 分相当 | 2025-08-18 |
+| B2 | Cloze sibling bury | 同一 note Cloze 初出題後 bury map 管理 | 2025-08-18 |
+| B3 | 回答サマリー UI | 正答率 / 新規投入 / lapses (基礎) | 2025-08-18 |
+| B4 | バッチ書込(単純) | PersistenceBuffer 10件 or 30s flush | 2025-08-18 |
+| B5 | エラー表示改善 | alert→toast (info/error) 置換 | 2025-08-18 |
+| B6 | 応答時間計測収集 | review log 末尾列 `response_time_ms` (後方互換) | 2025-08-18 |
 
 ## Phase C (負荷平準化 / 基本メトリクス)
 | ID | タスク | 詳細 / Acceptance | P | Effort |
@@ -123,12 +123,12 @@ A1 -> B4 -> D1 -> D2
 C4 -> E2/E5
 ```
 
-## 直近アクション推奨 (Top 5)
-1. A1 メモリ更新
-2. A2 簡易キュー
-3. A3 進捗 HUD
-4. A6 テスト (A1/A2)
-5. B1 Learning Steps (早期にモデル本来挙動へ)
+## 直近アクション推奨 (Top 5) - Phase C へ移行
+1. C1 Interval fuzz (決定的 ±5%)
+2. C4 基本メトリクス集計 (Retention / Overdue)
+3. C2 Backlog 平準化 (過負荷制御)
+4. C3 Daily new limit 実装
+5. C6 Leech フラグ (lapses>=閾値)
 
 ## テスト指針 (Phase A)
 実行コマンド: `deno task coverage` を標準運用とし、テストと同時に coverage HTML レポートを生成。

@@ -1,8 +1,8 @@
-# 実装済みの機能 (現状分析)
+# 実装済みの機能 (現状分析 / Phase A-B 反映)
 
-コードリーディング（`main.ts`, `core/*`,
-`ui/flash_card_panel.tsx`）に基づき、現在確認できる完成度を整理する。粒度:
-SRSシステムにおけるコンポーネント視点。
+最終更新: 2025-08-18 Phase B 完了時点。コードリーディング（`main.ts`, `core/*`,
+`ui/flash_card_panel.tsx`）およびテスト (`*.test.ts`) から確認できる実装状況を
+整理する。粒度: SRS システムにおけるコンポーネント視点。
 
 ## 1. 入力（ノート抽出）
 
@@ -27,27 +27,33 @@ SRSシステムにおけるコンポーネント視点。
 - `writeReviewLog` がユーザ別 table (`${username}-revlog`) に追記形式で patch。
 - `RevLog` モデルは FSRS の `ReviewLog` + (noteId, ord)。
 
-## 4. 学習セッション制御（最小機能）
+## 4. 学習セッション制御（Phase A-B 拡張）
 
-- UI コンポーネント (`FlashCardController`) が:
-  - Show Answer 遷移
-  - Easy / Good / Hard / Again 評価（Enter → 1~4 数字による入力）
-  - Escape で終了
-- メインループは `showFlashCardController()` の ReadableStream を `for await`
+- UI コンポーネント (`FlashCardController`):
+  - Show Answer 遷移 / 1~4(Again/Hard/Good/Easy) / Enter 確定 / Esc 終了。
+  - Toast による非モーダル通知 (B5)。
+- メインループ: `showFlashCardController()` の ReadableStream を `for await`
   で購読。
-- 回答後: FSRS `next` を呼び card 更新結果 + log を個別書き込み。
-- 問題表示/解答表示は CSS 差し替えで行う（DOM
-  コンテンツ自体は再レンダリングしない）。
+- 回答処理: FSRS `next` を呼び `applyAnswer` で in-memory `Map` 即時更新 (A1) +
+  PersistenceBuffer へ enqueue (B4)。
+- 学習ステップ (B1): Learning state の短期再出題 (config `[1,10]` 分相当) を
+  queue に再挿入。
+- Sibling bury (B2): 同一 Note の他 Cloze は当日セッション中 bury
+  され初回集中出題を回避。
+- 回答時間計測 (B6): カード表示時 timestamp を保持し回答確定までの ms を review
+  log 末尾列 `response_time_ms` に追記 (後方互換で 12→13 列)。
+- 問題表示/解答表示は CSS 差し替え (DOM 再構築最小化)。
 
 ## 5. CSS/表示の最小制御
 
 - Cloze 非表示は line id セレクタ列挙による CSS `visibility:hidden`。
 - 回答表示では穴埋め部のみ再表示。
 
-## 6. 基盤的エラーハンドリング
+## 6. エラーハンドリング / 通知 (改善)
 
-- セッションループ内 `try/catch` → `alert()` で通知。致命的例外の場合のみ再
-  throw。
+- 旧: `alert()` ベース。
+- 現行: Toast コンポーネント (info / error) に置換 (B5)。
+  - 失敗時リトライ導線は今後拡張予定 (現状は表示のみ)。
 
 ## 7. ユーティリティ / 実装クオリティ
 
@@ -58,8 +64,9 @@ SRSシステムにおけるコンポーネント視点。
 
 ## 8. テスト
 
-- `core` 配下に一部ユニットテスト（storage 更新や note
-  パース）が存在（スナップショット含む）。
+- Phase A でセッション/キュー/サマリー/ストレージ周辺ユニットテストを拡充。
+- Phase B 追加: learning steps, sibling bury, persistence buffer (バッチ条件),
+  review log 後方互換 (12/13列) / response time 列のパーステスト。
 
 ## 9. 技術選定
 
@@ -67,24 +74,27 @@ SRSシステムにおけるコンポーネント視点。
 - UI: Preact + Shadow DOM 埋め込み。（副作用的 mount / unmount）
 - 設計層構造: 概要は [architecture.md](./architecture.md) 参照。
 
-## 10. 現状で“できている”と判断する最小 MVP 範囲
+## 10. 現状で“できている”と判断する MVP+ 範囲 (Phase B 終了時)
 
-- ページから Cloze 抽出 → 新規カード初期化 → シャッフル出題 →
-  単発セッションの記録（card + revlog 永続化）。
+- ページから Cloze 抽出 → カード初期化 → 三分割キュー (New/Learning/Review) 出題
+  → 学習ステップ再出題 → Sibling bury → セッション内 HUD 進捗表示 → 回答サマリー
+  (正答率/新規投入/失敗数) → バッチ persistence (10件 or 30s) → review log
+  へ応答時間含む記録。
 
-## 11. まだ不十分だが基盤は存在する領域（ギャップ例）
+## 11. まだ不十分だが基盤は存在する領域（更新後ギャップ）
 
-| 項目                           | 既存                  | 必要な完成形へのギャップ                                    |
-| ------------------------------ | --------------------- | ----------------------------------------------------------- |
-| インターバル再スケジュール     | FSRS `next` 呼び出し  | 学習中 queue 再挿入／次 due 優先順制御未実装                |
-| 状態反映                       | DB に即書込           | メモリ上の `cardsInThePage` 未更新 / セッション内挙動非適応 |
-| セッション統計                 | 初回 alert で枚数表示 | 進捗リアルタイム更新 / 結果サマリーなし                     |
-| エラーハンドリング             | alert                 | 型別 UI / 再試行 / ログ収集なし                             |
-| 同期戦略                       | 即時単発 patch        | まとめ書き・衝突回避・オフライン考慮なし                    |
-| パラメータチューニング         | デフォルト固定        | 個人学習履歴からの推定機構なし                              |
-| Sibling (同一 Note Cloze) 制御 | なし                  | 連続出題回避 (bury siblings)                                |
-| Backlog 処理                   | なし                  | 期限超過カードの段階的放出 (load balancing)                 |
-| Quality Gate                   | 一部ユニットテスト    | カバレッジ / CI / プロパティテスト不足                      |
+| 項目                           | 現在 (Phase B)                           | 残ギャップ / 追加要件                                 |
+| ------------------------------ | ---------------------------------------- | ----------------------------------------------------- |
+| インターバル再スケジュール     | FSRS + Learning steps 再挿入実装済       | Backlog / fuzz / 負荷平準化ロジック未導入             |
+| 状態反映                       | In-memory 即時更新 (A1)                  | 競合時ロールバック / オフライン編集差分マージ         |
+| セッション統計 / サマリー      | HUD + 正答率/新規/失敗数サマリー (A4,B3) | 応答時間統計 / Stability 変化Δ / Retention 推定       |
+| エラーハンドリング             | Toast 表示 (B5)                          | 分類 / 自動リトライ / 詳細ログ収集 / オフラインキュー |
+| 同期戦略                       | バッチ (10件 or 30s) (B4)                | 競合検出 / 冪等リトライ / オフライン隊列 / 圧縮       |
+| パラメータチューニング         | デフォルト固定                           | 個別 MLE 推定 / Retention 目標制御                    |
+| Sibling (同一 Note Cloze) 制御 | bury 当日抑止 (B2)                       | bury 戦略の設定化 / 週跨ぎデッキ回避オプション        |
+| Backlog 処理                   | 未実装                                   | 過負荷緩和導入 (Phase C 予定)                         |
+| Quality Gate                   | 単体+スナップショット拡充                | CI coverage Gate / property-based fuzz / 負荷テスト   |
+| 応答時間活用                   | ログ保存のみ (B6)                        | 難易度補正 / 集計可視化 / 異常遅延検知                |
 
 ---
 
