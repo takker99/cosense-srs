@@ -80,6 +80,32 @@ Deno.test("applyAnswer returns requeue for learning states", () => {
   assert(result.requeue, "Should requeue after Again leading to Learning state");
 });
 
+Deno.test("learning steps assign dueAt and rotate until due", () => {
+  const f = new FSRS({});
+  const cs: CardState = {
+    id: "n1-0" as CardId,
+    card: baseCard(State.New),
+    noteId: "n1",
+    note: note("n1", [0]),
+    ord: 0,
+  };
+  // First answer AGAIN transitions to Learning with step 0
+  let r = applyAnswer(f as FSRS, cs, Rating.Again, new Date(1000));
+  assert(r.requeue);
+  assert(r.updated.dueAt! > 1000);
+  const q = newQueues();
+  enqueue(q, r.updated);
+  // Not yet due: pickNext should skip and return undefined (since no other queues)
+  const picked1 = pickNext(q, 1000 + 10);
+  assertEquals(picked1, undefined);
+  // Advance time beyond dueAt
+  const picked2 = pickNext(q, r.updated.dueAt! + 1);
+  assert(picked2);
+  // Answer GOOD to advance step index
+  r = applyAnswer(f as FSRS, picked2!, Rating.Good, new Date(r.updated.dueAt! + 1));
+  assert(r.updated.learningStepIndex! >= 1);
+});
+
 Deno.test("classifyAndCount tallies states", () => {
   const counts = classifyAndCount([
     baseCard(State.New),

@@ -9,6 +9,9 @@ export interface CardState {
   noteId: string;
   note: Note;
   ord: number; // cloze ordinal
+  // learning steps support
+  learningStepIndex?: number; // 0-based index in configured steps
+  dueAt?: number; // epoch ms for next availability (used while in Learning/Relearning short steps)
 }
 
 export interface Queues {
@@ -40,8 +43,24 @@ export const buildQueues = (cardStates: Iterable<CardState>): Queues => {
   return q;
 };
 
-export const pickNext = (queues: Queues): CardState | undefined =>
-  queues.learning.shift() ?? queues.review.shift() ?? queues.New.shift();
+/**
+ * Pick next card honouring availability windows for learning cards.
+ * Learning queue: skip cards whose dueAt is in the future (push them back to queue tail).
+ */
+export const pickNext = (queues: Queues, now = Date.now()): CardState | undefined => {
+  // process learning queue with temporal gating
+  let rotations = queues.learning.length;
+  while (rotations-- > 0) {
+    const cs = queues.learning.shift()!;
+    if (cs.dueAt && cs.dueAt > now) {
+      // not yet due -> rotate to end
+      queues.learning.push(cs);
+    } else {
+      return cs;
+    }
+  }
+  return queues.review.shift() ?? queues.New.shift();
+};
 
 export const classifyAndCount = (
   cards: Iterable<CosenseCard>,
@@ -127,16 +146,42 @@ export interface ApplyAnswerResult {
   requeue: boolean; // whether to reinsert into a queue for immediate future review
 }
 
+export interface LearningStepsConfig {
+  stepsSeconds: number[]; // e.g. [60,300]
+}
+
+export const defaultLearningSteps: LearningStepsConfig = {
+  stepsSeconds: [60, 300],
+};
+
 export const applyAnswer = (
   f: FSRS,
   cs: CardState,
   grade: Grade,
   now = new Date(),
+  cfg: LearningStepsConfig = defaultLearningSteps,
 ): ApplyAnswerResult => {
   const result = f.next(cs.card, now, grade) as unknown as FsrsNextResultLike;
-  const updated: CardState = { ...cs, card: result.card };
-  const state = result.card.state;
-  const requeue = state === State.Learning || state === State.Relearning;
+  let updated: CardState = { ...cs, card: result.card };
+  let requeue = false;
+  if (result.card.state === State.Learning || result.card.state === State.Relearning) {
+    // compute next short step
+    const currentIndex = (cs.learningStepIndex ?? 0);
+    const nextIndex = grade === Rating.Again ? currentIndex : currentIndex + 1; // simplistic advancement rule
+    const stepDur = cfg.stepsSeconds[Math.min(nextIndex, cfg.stepsSeconds.length - 1)];
+    updated = {
+      ...updated,
+      learningStepIndex: nextIndex,
+      dueAt: now.getTime() + stepDur * 1000,
+    };
+    requeue = true;
+  } else {
+    // clear transient fields when graduating to Review
+    if (updated.learningStepIndex !== undefined) {
+      delete updated.learningStepIndex;
+      delete updated.dueAt;
+    }
+  }
   return { updated, log: result.log, requeue };
 };
 
