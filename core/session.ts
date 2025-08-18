@@ -225,11 +225,15 @@ export const applyAnswer = (
 export interface SessionSummary {
   answered: number;
   remaining: { New: number; learning: number; review: number };
+  accuracy: number; // (good+easy)/answered
+  lapses: number; // again count
+  newIntroduced: number; // number of distinct New cards that received first answer in this session
 }
 
 export const summarizeSession = (
   answered: number,
   queues: Queues,
+  metrics?: Partial<Pick<SessionSummary, "accuracy" | "lapses" | "newIntroduced">>,
 ): SessionSummary => ({
   answered,
   remaining: {
@@ -237,4 +241,40 @@ export const summarizeSession = (
     learning: queues.learning.length,
     review: queues.review.length,
   },
+  accuracy: metrics?.accuracy ?? 0,
+  lapses: metrics?.lapses ?? 0,
+  newIntroduced: metrics?.newIntroduced ?? 0,
 });
+
+export interface SessionMetricsMutable {
+  answered: number; // mirror answered param
+  goodOrEasy: number;
+  lapses: number;
+  newIntroduced: number;
+  seen: Set<CardId>; // track first-time exposure
+}
+
+export const newSessionMetrics = (): SessionMetricsMutable => ({
+  answered: 0,
+  goodOrEasy: 0,
+  lapses: 0,
+  newIntroduced: 0,
+  seen: new Set(),
+});
+
+export const updateMetricsAfterAnswer = (
+  m: SessionMetricsMutable,
+  cs: CardState,
+  grade: Grade,
+) => {
+  m.answered++;
+  if (!m.seen.has(cs.id)) {
+    m.seen.add(cs.id);
+    if (cs.card.state === State.New) m.newIntroduced++;
+  }
+  if (grade === Rating.Good || grade === Rating.Easy) m.goodOrEasy++;
+  if (grade === Rating.Again) m.lapses++;
+};
+
+export const computeAccuracy = (m: SessionMetricsMutable): number =>
+  m.answered === 0 ? 0 : m.goodOrEasy / m.answered;

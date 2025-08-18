@@ -13,6 +13,9 @@ import {
   toRating,
   type CardState,
   releaseBuriedIfGraduated,
+  newSessionMetrics,
+  updateMetricsAfterAnswer,
+  computeAccuracy,
 } from "./session.ts";
 import { toCardId, type CardId, type CosenseCard } from "./card.ts";
 import type { Note } from "./note.ts";
@@ -160,7 +163,23 @@ Deno.test("summarizeSession returns remaining counts", () => {
   };
   enqueue(queues, cs);
   const summary = summarizeSession(3, queues);
-  assertEquals(summary, { answered: 3, remaining: { New: 1, learning: 0, review: 0 } });
+  assertEquals(summary.answered, 3);
+  assertEquals(summary.remaining, { New: 1, learning: 0, review: 0 });
+});
+
+Deno.test("session metrics track accuracy lapses and newIntroduced", () => {
+  const metrics = newSessionMetrics();
+  const cs1: CardState = { id: "n1-0" as CardId, card: baseCard(State.New), noteId: "n1", note: note("n1", [0]), ord: 0 };
+  const cs2: CardState = { id: "n1-1" as CardId, card: baseCard(State.New), noteId: "n1", note: note("n1", [1]), ord: 1 };
+  updateMetricsAfterAnswer(metrics, cs1, Rating.Good);
+  updateMetricsAfterAnswer(metrics, cs2, Rating.Again);
+  updateMetricsAfterAnswer(metrics, cs1, Rating.Easy); // second exposure shouldn't increment newIntroduced
+  assertEquals(metrics.answered, 3);
+  assertEquals(metrics.newIntroduced, 2);
+  assertEquals(metrics.lapses, 1);
+  const acc = computeAccuracy(metrics);
+  // good+easy = 2 out of 3
+  assert(Math.abs(acc - 2 / 3) < 1e-9);
 });
 
 Deno.test("toRating maps states", () => {

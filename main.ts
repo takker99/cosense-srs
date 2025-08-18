@@ -24,6 +24,9 @@ import {
   type Queues,
   enqueue,
   releaseBuriedIfGraduated,
+  newSessionMetrics,
+  updateMetricsAfterAnswer,
+  computeAccuracy,
 } from "./core/session.ts";
 
 // --- Phase A support types ---
@@ -84,7 +87,8 @@ export const startReview = async (project: string, title: string) => {
   // Build initial queues
   const initial = shuffle(buildInitialCardStates(notes, cardsInThePage));
   const queues = buildQueuesWithSiblingBury(initial);
-  let answered = 0;
+  let answered = 0; // retained for backwards compatibility
+  const metrics = newSessionMetrics();
   const hud = createHUD();
   hud.update(queues, answered);
 
@@ -128,7 +132,8 @@ export const startReview = async (project: string, title: string) => {
           },
         ], cardStorageLocation);
         if (isErr(logRes)) throw logRes;
-        answered++;
+  answered++;
+  updateMetricsAfterAnswer(metrics, cardStateInLoop, toRating(state));
   if (result.requeue) enqueue(queues, result.updated);
   // Try releasing buried siblings if card graduated to Review
   releaseBuriedIfGraduated(queues, result.updated);
@@ -153,8 +158,14 @@ export const startReview = async (project: string, title: string) => {
   } finally {
     style.remove();
     hud.remove();
-  const summary = summarizeSession(answered, queues);
-  alert(`Session Finished. Answered: ${summary.answered}`);
+  const summary = summarizeSession(answered, queues, {
+    accuracy: computeAccuracy(metrics),
+    lapses: metrics.lapses,
+    newIntroduced: metrics.newIntroduced,
+  });
+  alert(
+    `Session Finished. Answered: ${summary.answered}\nAccuracy: ${(summary.accuracy * 100).toFixed(1)}%\nLapses: ${summary.lapses}\nNew Introduced: ${summary.newIntroduced}`,
+  );
   }
 };
 
